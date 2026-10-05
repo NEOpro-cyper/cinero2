@@ -1,0 +1,28 @@
+# P-Stream systemd service file
+# Place in /etc/systemd/system/p-stream.service
+# Then run:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable p-stream
+#   sudo systemctl start p-stream
+#   sudo systemctl status p-stream
+# Logs: journalctl -u p-stream -f
+
+[Unit]
+Description=P-Stream Static Server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/p-stream
+Environment=PORT=8080
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /var/www/p-stream/scripts/serve-p-stream.js /var/www/p-stream
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

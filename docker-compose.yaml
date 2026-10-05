@@ -1,0 +1,41 @@
+version: "3.8"
+
+services:
+  pstream:
+    build:
+      context: .
+      # ─── Build-time configuration ───────────────────────────
+      # All of these are optional. Sensible defaults are baked
+      # into public/config.js, so the container will run without
+      # any of these set. Uncomment & set the ones you need.
+      # args:
+      #   PWA_ENABLED: "false"
+      #   APP_DOMAIN: "https://your-domain.com"
+      #   NORMAL_ROUTER: "true"
+      #   TMDB_READ_API_KEY: "your_tmdb_key"
+      #   CORS_PROXY_URL: "https://your-cors-proxy.workers.dev/?url="
+      #   M3U8_PROXY_URL: "https://your-m3u8-proxy.workers.dev"
+      #   BACKEND_URL: "https://your-backend.com"
+      #   HAS_ONBOARDING: "false"
+      #   ALLOW_AUTOPLAY: "false"
+      #   USE_TRAKT: "false"
+      #   TRAKT_CLIENT_ID: ""
+      #   TRAKT_CLIENT_SECRET: ""
+      #   TRAKT_REDIRECT_URI: "https://your-domain.com"
+    image: p-stream:latest
+    container_name: p-stream
+    ports:
+      - "80:80"
+    # ─── Runtime overrides ─────────────────────────────────
+    # Mount config.js as a volume so you can edit runtime config
+    # (TMDB key, CORS proxy, backend URL) without rebuilding the
+    # image. Edit ./config.js on the host, then `docker restart`.
+    volumes:
+      - ./config.js:/usr/share/nginx/html/config.js
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
