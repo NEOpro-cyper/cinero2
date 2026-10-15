@@ -70,7 +70,10 @@ export interface ServerConfig {
     | "hable"
     | "lordflix"
     | "zoko"
-    | "anivexa";
+    | "anivexa"
+    | "vidfast"
+    | "xpass"
+    | "vidora";
   headers?: Record<string, string>;
   quality?: string;
   /**
@@ -153,6 +156,46 @@ const SERVERS: ServerConfig[] = [
 //    mediaTypes: ["movie", "show"],
 //  },
 
+  // ── Meriton (Vidfast, server=1) ──
+  // Confirmed live shape: { success: true, url: "https://<cors-worker>/https://.../master.m3u8",
+  //   originalUrl, server: { name: "vBlaze" }, ... } → "vidfast" adapter.
+  {
+    name: "Meriton",
+    base: "/api/ext/vidfast",
+    path: "/api/ext/vidfast/api/movie/{id}?server=1&worker=1",
+    tvPath: "/api/ext/vidfast/api/tv/{id}/{season}/{episode}?server=1&worker=1",
+    responseType: "vidfast",
+    timeout: 15000,
+    mediaTypes: ["movie", "show"],
+  },
+
+  // ── Slaze (Vidfast, server=2) ──
+  // Same API + same response shape as Meriton, different backend server.
+  {
+    name: "Slaze",
+    base: "/api/ext/vidfast",
+    path: "/api/ext/vidfast/api/movie/{id}?server=2&worker=1",
+    tvPath: "/api/ext/vidfast/api/tv/{id}/{season}/{episode}?server=2&worker=1",
+    responseType: "vidfast",
+    timeout: 15000,
+    mediaTypes: ["movie", "show"],
+  },
+
+  // ── Aruko (Xpass) ──
+  // TWO-STEP API: step 1 returns { servers: [{ name, url: playlist.json }] },
+  // step 2 fetches the playlist.json (play.xpass.top, CF-protected —
+  // resolved server-side via /api/ext/xpassplay/*) which contains the
+  // actual HLS manifest. Handled by the "xpass" adapter + fetcher hook.
+  {
+    name: "Aruko",
+    base: "/api/ext/xpass",
+    path: "/api/ext/xpass/api/movie/{id}?server=1&worker=1",
+    tvPath: "/api/ext/xpass/api/tv/{id}/{season}/{episode}?server=1&worker=1",
+    responseType: "xpass",
+    timeout: 15000,
+    mediaTypes: ["movie", "show"],
+  },
+
   // ── Nest (Vidnest) ──
   {
     name: "Nest",
@@ -196,6 +239,34 @@ const SERVERS: ServerConfig[] = [
     path: "/api/ext/lordflix/api/movie/{id}?server=Scout&worker=1",
     tvPath: "/api/ext/lordflix/api/tv/{id}/{season}/{episode}?server=Scout&worker=1",
     responseType: "lordflix",
+    timeout: 15000,
+    mediaTypes: ["movie", "show"],
+  },
+
+  // ── Miami (Lordflix-family on movy-bz host, server=miami) ──
+  // Confirmed live shape: { sources: [{quality: "1080p", url: ...m3u8}, ...],
+  //   subtitles: [], playlist: "...master.m3u8", server: "miami" }
+  // → "lordflix" adapter (playlist preferred, sources[] as fallback).
+  {
+    name: "Miami",
+    base: "/api/ext/miami",
+    path: "/api/ext/miami/api/movie/{id}?server=miami&worker=1",
+    tvPath: "/api/ext/miami/api/tv/{id}/{season}/{episode}?server=miami&worker=1",
+    responseType: "lordflix",
+    timeout: 15000,
+    mediaTypes: ["movie", "show"],
+  },
+
+  // ── Kyro (Vidora) ──
+  // Confirmed live shape: { result: true, sources: [{ url: "https://<cors-worker>/.../master.m3u8",
+  //   tracks: [] }] }; failure: { result: false, message: "Movie not yet encoded" }
+  // → "vidora" adapter (result:false → undefined → auto-failover).
+  {
+    name: "Kyro",
+    base: "/api/ext/vidora",
+    path: "/api/ext/vidora/api/movie/{id}?worker=1",
+    tvPath: "/api/ext/vidora/api/tv/{id}/{season}/{episode}?worker=1",
+    responseType: "vidora",
     timeout: 15000,
     mediaTypes: ["movie", "show"],
   },

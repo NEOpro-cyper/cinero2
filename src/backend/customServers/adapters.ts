@@ -881,15 +881,47 @@ function adaptLordflix(json: any): NormalizedStream | undefined {
     (looksLikeUrl(data.playlist) && data.playlist) ||
     (looksLikeUrl(data.url) && data.url) ||
     undefined;
+  // Miami-style responses carry subtitles under `subtitles` (older
+  // lordflix hosts use `captions`) — merge both, dedupe by URL.
+  const topLevelCaptions: NormalizedCaption[] = [];
+  {
+    const seen = new Set<string>();
+    for (const c of [
+      ...captionsFor(data.captions),
+      ...captionsFor(data.subtitles),
+    ]) {
+      if (seen.has(c.url)) continue;
+      seen.add(c.url);
+      topLevelCaptions.push(c);
+    }
+  }
   if (topLevel) {
-    const captions = captionsFor(data.captions);
     if (isMp4Url(topLevel)) {
       return fileFromQualities(
         [{ quality: "unknown", url: topLevel, type: "mp4" }],
-        { captions, label: "Lordflix" },
+        { captions: topLevelCaptions, label: "Lordflix" },
       );
     }
-    return hlsFromUrl(topLevel, { captions, label: "Lordflix" });
+    return hlsFromUrl(topLevel, {
+      captions: topLevelCaptions,
+      label: "Lordflix",
+    });
+  }
+
+  // 2.5 Per-quality sources[] (Miami: {sources:[{quality:"1080p",
+  //     url:"...index-s1080p-v1-a1.m3u8"}, ...]} — only reached when the
+  //     adaptive `playlist` field is absent).
+  const srcArr: any[] = Array.isArray(data.sources) ? data.sources : [];
+  if (srcArr.length > 0) {
+    const raw: RawSource[] = srcArr
+      .filter((s: any) => s && looksLikeUrl(s.url))
+      .map((s: any) => ({
+        url: s.url,
+        quality: s.quality ?? s.label,
+        label: s.quality,
+      }));
+    const stream = fromRawSources(raw, topLevelCaptions);
+    if (stream) return stream;
   }
 
   // 3. Deep scan
@@ -1032,6 +1064,190 @@ function adaptAnivexa(json: any): NormalizedStream | undefined {
 }
 
 /* ------------------------------------------------------------------ */
+/*  vidfast / xpass / vidora adapters                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * `vidfast` — Vidfast stream API (Meriton ?server=1, Slaze ?server=2)
+ * Service root advertises:
+ *   GET /api/movie/{tmdbOrImdbId}[?server=1|name][&worker=1]
+ *   GET /api/tv/{tmdbOrImdbId}/{season}/{episode}[?server=1|name][&worker=1]
+ *
+ * CONFIRMED success shape (live sample, identical for Meriton & Slaze):
+ *   { success: true, type: "movie", id, title, poster, backdrop,
+ *     selectedBy, server: { index, name: "vBlaze", ... },
+ *     originalUrl: "https://moon.zenoak.top/.../master.m3u8",      (raw host)
+ *     url: "https://<cors-worker>/https://moon.zenoak.top/.../master.m3u8",
+ *     worker: true, stream: { url: <raw host>, ... }, cached, ... }
+ * → prefer the worker-wrapped `url` (CORS-open) over `originalUrl` /
+ *   `stream.url` (raw upstream host, likely CORS-restricted).
+ *
+ * Error envelope (upstream dec/enc stage down):
+ *   { success: false, error: "enc-dec stage 2 failed: ..." }
+ */
+function adaptVidfast(json: any): NormalizedStream | undefined {
+  if (!json || typeof json !== "object") return undefined;
+  if (json.success === false || json.error) return undefined;
+
+  const serverName = json.server?.name ? ` · ${json.server.name}` : "";
+
+  // 1) Single-URL shapes — worker-wrapped `url` first, raw-host URLs after.
+  const single = [
+    json.url,
+    json.streamUrl,
+    json.stream_url,
+    json.originalUrl,
+    json.stream?.url,
+    json.link,
+    json.source,
+    json.data?.url,
+    json.data?.streamUrl,
+  ].find(looksLikeUrl);
+  if (single) {
+    return hlsFromUrl(single, { label: `Vidfast${serverName}` });
+  }
+
+  // 2) Multi-source arrays (strings or objects)
+  for (const key of ["sources", "streams", "qualities", "data"]) {
+    const arr = json[key];
+    if (!Array.isArray(arr) || arr.length === 0) continue;
+    const raw: RawSource[] = arr
+      .map((entry: any) => {
+        if (typeof entry === "string" && looksLikeUrl(entry)) {
+          return { url: entry } as RawSource;
+        }
+        if (entry && typeof entry === "object") {
+          const url = [entry.url, entry.file, entry.link, entry.source].find(
+            looksLikeUrl,
+          );
+          if (!url) return undefined;
+          return {
+            url,
+            quality: entry.quality ?? entry.label ?? entry.resolution,
+            language: entry.language ?? entry.lang,
+            headers:
+              entry.headers && typeof entry.headers === "object"
+                ? entry.headers
+                : undefined,
+            label: entry.label ?? entry.name,
+          } as RawSource;
+        }
+        return undefined;
+      })
+      .filter((r: RawSource | undefined): r is RawSource => !!r);
+    const stream = fromRawSources(raw, collectRawCaptions(json));
+    if (stream) return stream;
+  }
+
+  // 3) Deep-scan fallback (same as other adapters).
+  return fromRawSources(collectRawSources(json), collectRawCaptions(json));
+}
+
+/**
+ * `xpass` — Xpass API (Aruko). TWO-STEP flow, resolved in fetcher.ts:
+ *
+ *   Step 1 (this response): GET /api/movie/{id}?server=1&worker=1
+ *     { mode: "single", tmdb_id, positionKey, selectedServer: "TIK 1",
+ *       responseTimeMs, servers: [{ name: "TIK 1",
+ *         url: "https://play.xpass.top/mdata/<hash>/1/playlist.json" }, ...] }
+ *
+ *   Step 2 (fetched by fetcher.ts via /api/ext/xpassplay/*, which keeps
+ *   the browser's User-Agent — enough to pass the Cloudflare check):
+ *     { playlist: [{ sources: [{ file: "...master.m3u8", type: "hls",
+ *         label: "TIK 2", id: "..." }] }], safarihlsjs: true }
+ *
+ * fetcher.ts merges step 2 into the step-1 body as `playlists:
+ * [{ server, data }]` before dispatching here.
+ */
+function adaptXpass(json: any): NormalizedStream | undefined {
+  if (!json || typeof json !== "object") return undefined;
+  const playlists: any[] = Array.isArray(json.playlists) ? json.playlists : [];
+
+  for (const pl of playlists) {
+    const data = pl?.data;
+    const groups = Array.isArray(data?.playlist) ? data.playlist : [];
+    for (const group of groups) {
+      const sources = Array.isArray(group?.sources) ? group.sources : [];
+      const pick = sources.find(
+        (s: any) => s && looksLikeUrl(s.file) && (isHlsUrl(s.file) || isMp4Url(s.file)),
+      );
+      if (pick) {
+        const label = [pl.server, pick.label].filter(Boolean).join(" · ");
+        return hlsFromUrl(pick.file, { label: label || "Xpass" });
+      }
+    }
+  }
+  // NOTE: intentionally NO deep-scan fallback here — the only URLs in the
+  // step-1 body are playlist.json manifests, which are not playable
+  // streams. Returning undefined lets the player fail over to the next
+  // server instead of feeding the player a JSON manifest.
+  return undefined;
+}
+
+/**
+ * `vidora` — Vidora API (Kyro)
+ * Success shape (probed):
+ *   { result: true, type: "movie"|"tv", title, tmdb_id, imdb_id, year,
+ *     view_type, view_id,
+ *     sources: [{ file_code, url: "https://<cors-worker>/https://.../master.m3u8?...",
+ *                 source: "vidora", tracks: [] }] }
+ * Failure shape: { result: false, message: "Movie not yet encoded", ... }
+ *
+ * The returned source URLs are already wrapped in a CORS-enabled
+ * workers.dev proxy by the upstream itself.
+ */
+function adaptVidora(json: any): NormalizedStream | undefined {
+  if (!json || typeof json !== "object" || json.result !== true) return undefined;
+
+  const sources: any[] = Array.isArray(json.sources) ? json.sources : [];
+
+  // Tracks → captions ({ file | url, label, language } shapes).
+  const captions: NormalizedCaption[] = [];
+  for (const s of sources) {
+    const tracks = Array.isArray(s?.tracks) ? s.tracks : [];
+    for (const t of tracks) {
+      const url = t?.file ?? t?.url;
+      if (!looksLikeUrl(url)) continue;
+      captions.push({
+        id: `vidora-cap-${captions.length}`,
+        language: String(t.language ?? t.lang ?? t.srclang ?? "en"),
+        url,
+        display: t.label ?? t.language ?? "Subtitles",
+        // Served through the same CORS-open worker as the video.
+        hasCorsRestrictions: false,
+      });
+    }
+  }
+
+  const urls = sources
+    .map((s) => s?.url)
+    .filter((u: unknown): u is string => looksLikeUrl(u));
+  if (urls.length === 0) return undefined;
+
+  const hls = urls.find(isHlsUrl);
+  if (hls) {
+    return hlsFromUrl(hls, {
+      captions,
+      label: `Vidora${json.title ? ` · ${json.title}` : ""}`,
+    });
+  }
+
+  const mp4s = urls.filter(isMp4Url);
+  if (mp4s.length > 0) {
+    return fileFromQualities(
+      mp4s.map((u) => ({ quality: "unknown", url: u, type: "mp4" as const })),
+      { captions },
+    );
+  }
+
+  // Unknown URL type — hand the first one to the player as HLS.
+  return hlsFromUrl(urls[0], {
+    captions,
+    label: `Vidora${json.title ? ` · ${json.title}` : ""}`,
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /*  dispatcher                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -1077,6 +1293,12 @@ export function adaptResponse(
       return adaptZoko(body);
     case "anivexa":
       return adaptAnivexa(body);
+    case "vidfast":
+      return adaptVidfast(body);
+    case "xpass":
+      return adaptXpass(body);
+    case "vidora":
+      return adaptVidora(body);
     default:
       // Unknown responseType — try a series of fallbacks.
       return (

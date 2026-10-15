@@ -230,7 +230,10 @@ export function DetailsContent({ data, minimal = false }: DetailsContentProps) {
     // numeric id + title. (NOTE: DetailsModal reports anime as
     // type: "show" so the episode picker renders — the presence of
     // anilistUrlId is what marks it as anime here.)
-    if (data.anilistUrlId || (data.type === "anime" && data.id)) {
+    if (
+      data.anilistUrlId ||
+      ((data.type as string) === "anime" && data.id)
+    ) {
       const urlId =
         data.anilistUrlId ??
         `anilist-${data.id}-${data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
@@ -262,7 +265,7 @@ export function DetailsContent({ data, minimal = false }: DetailsContentProps) {
     // Anime uses the AniList URL id directly (no tmdb-movie/tmdb-tv prefix).
     const animeUrlId =
       data.anilistUrlId ??
-      (data.type === "anime" && data.id
+      ((data.type as string) === "anime" && data.id
         ? `anilist-${data.id}-${data.title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
         : null);
     const shareUrl = animeUrlId

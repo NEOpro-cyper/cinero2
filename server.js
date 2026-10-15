@@ -101,6 +101,19 @@ const STREAMING_PROXY_ROUTES = [
   { prefix: "/api/ext/vidrock/",     upstream: process.env.VIDROCK_UPSTREAM     || "https://vidrock.speedoflight.buzz" },
   // Lordflix — Light (?server=Lisbon) + Space (?server=Scout)
   { prefix: "/api/ext/lordflix/",    upstream: process.env.LORDFLIX_UPSTREAM    || "https://lordflix.speedoflight.buzz" },
+  // Vidfast — Meriton (?server=1) + Slaze (?server=2)
+  { prefix: "/api/ext/vidfast/",     upstream: process.env.VIDFAST_UPSTREAM     || "https://vidfast.45.43.92.254.sslip.io" },
+  // Xpass — Aruko (server-list API: /api/movie/{id}?server=1&worker=1)
+  { prefix: "/api/ext/xpass/",       upstream: process.env.XPASS_UPSTREAM       || "https://xpass-api.45.43.92.254.sslip.io" },
+  // Xpass playlist host — the /api/ext/xpass/ API returns playlist.json
+  // URLs on play.xpass.top (Cloudflare-protected). The generic proxy
+  // below forwards the browser's real User-Agent, which is enough to
+  // pass the CF check (verified: UA-only → HTTP 200, curl UA → challenge).
+  { prefix: "/api/ext/xpassplay/",   upstream: process.env.XPASSPLAY_UPSTREAM   || "https://play.xpass.top" },
+  // Miami — lordflix-family API on its own host (?server=miami)
+  { prefix: "/api/ext/miami/",       upstream: process.env.MIAMI_UPSTREAM       || "https://movy-bz.45.43.92.254.sslip.io" },
+  // Kyro — Vidora API (/api/movie/{id}?worker=1)
+  { prefix: "/api/ext/vidora/",      upstream: process.env.VIDORA_UPSTREAM      || "https://movies-api.45.43.92.254.sslip.io" },
 //  { prefix: "/api/ext/bingr/",       upstream: process.env.BINGR_UPSTREAM       || "https://r420jyawtqacmm8bfuychtuv.45.43.92.254.sslip.io" },
   // Aether — Tiki (?server=4) + Meridian (?server=2)
 //  { prefix: "/api/ext/aether/",      upstream: process.env.AETHER_UPSTREAM      || "https://aether-api.45.43.92.254.sslip.io" },

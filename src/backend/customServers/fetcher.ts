@@ -140,6 +140,88 @@ async function fetchWithTimeout(
   }
 }
 
+/* ------------------------------------------------------------------ */
+/*  Xpass (Aruko) two-step resolution                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Rewrite a play.xpass.top playlist URL to the same-origin reverse proxy
+ * so the browser never talks to the CF-protected host directly:
+ *   https://play.xpass.top/mdata/.../playlist.json
+ *     → /api/ext/xpassplay/mdata/.../playlist.json
+ *
+ * The proxy forwards the browser's real User-Agent, which is enough to
+ * pass Cloudflare (verified: browser UA → HTTP 200, curl UA → challenge).
+ */
+function rewriteXpassPlaylistUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    if (u.hostname === "play.xpass.top") {
+      return `/api/ext/xpassplay${u.pathname}${u.search}`;
+    }
+  } catch {
+    // not a URL — return as-is
+  }
+  return url;
+}
+
+/** Fetch one xpass playlist.json through the reverse proxy. */
+async function fetchXpassPlaylist(
+  url: string,
+  timeoutMs: number,
+): Promise<any | undefined> {
+  try {
+    const res = await fetchWithTimeout(
+      url,
+      { headers: { Accept: "application/json, text/plain, */*" }, credentials: "omit" },
+      timeoutMs,
+    );
+    if (!res.ok) return undefined;
+    // A Cloudflare challenge page arrives as text/html — treat as failure
+    // so the caller can try the next playlist.
+    const ct = res.headers.get("content-type") ?? "";
+    if (ct.includes("text/html")) return undefined;
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return undefined;
+    }
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Xpass step 1 returns only playlist.json URLs (one per upstream server);
+ * the actual HLS manifests live inside those JSON files. Fetch them here
+ * (selected server first, up to 4 attempts) and merge the parsed
+ * playlists into the body so the `xpass` adapter can pick a stream.
+ */
+async function resolveXpassPlaylists(body: any): Promise<any> {
+  const servers: any[] = Array.isArray(body?.servers) ? body.servers : [];
+  const selected = body?.selectedServer;
+  // Stable-sort the selected server first, keep the advertised order after.
+  const ordered = [...servers].sort(
+    (a, b) => Number(b?.name === selected) - Number(a?.name === selected),
+  );
+
+  const playlists: Array<{ server: string; data: any }> = [];
+  for (const entry of ordered.slice(0, 4)) {
+    if (!entry?.url || typeof entry.url !== "string") continue;
+    const data = await fetchXpassPlaylist(
+      rewriteXpassPlaylistUrl(entry.url),
+      10000,
+    );
+    if (data) {
+      playlists.push({ server: entry.name ?? "xpass", data });
+      break; // first playable playlist is enough
+    }
+  }
+
+  return { ...body, playlists };
+}
+
 /**
  * Fetch a stream from a custom server.
  * Returns a NormalizedStream on success, or throws on failure.
@@ -202,7 +284,15 @@ export async function fetchCustomServerStream(
     }
   }
 
-  const stream = adaptResponse(server.responseType, body);
+  // Xpass needs a second fetch: step 1 only returns playlist.json URLs.
+  // Resolve them (via the /api/ext/xpassplay/* reverse proxy) and merge
+  // the parsed playlists into the body before dispatching to the adapter.
+  let bodyForAdapter: unknown = body;
+  if (server.responseType === "xpass" && body && typeof body === "object") {
+    bodyForAdapter = await resolveXpassPlaylists(body);
+  }
+
+  const stream = adaptResponse(server.responseType, bodyForAdapter);
   if (!stream) {
     throw new Error(
       `Custom server "${server.name}" (${server.responseType ?? "auto"}) returned no usable stream`,
