@@ -109,6 +109,20 @@ const SERVERS: ServerConfig[] = [
   //     type: "hls" | "embed", server: "HD-1", subtitles: [{url, label,
   //     srclang, default}], priority, isActive, intro, outro }
   //   → handled by the "anivexa" adapter.
+
+
+
+  {
+    name: "Kitsune",
+    base: "/api/ext/zoko",
+    path: "/api/ext/zoko/api/mal/{category}/{id}/1?worker=1",
+    tvPath: "/api/ext/zoko/api/mal/{category}/{id}/{episode}?worker=1",
+    responseType: "zoko",
+    timeout: 20000,
+    mediaTypes: ["anime"],
+  },
+
+  
   {
     name: "Sakura",
     base: "/api/ext/anivexa",
@@ -134,15 +148,7 @@ const SERVERS: ServerConfig[] = [
   //
   // Response shape: { ok, stream_url, subtitles: [{lang, label, src}], skip }
   // → handled by the "zoko" adapter.
-  {
-    name: "Kitsune",
-    base: "/api/ext/zoko",
-    path: "/api/ext/zoko/api/mal/{category}/{id}/1?worker=1",
-    tvPath: "/api/ext/zoko/api/mal/{category}/{id}/{episode}?worker=1",
-    responseType: "zoko",
-    timeout: 20000,
-    mediaTypes: ["anime"],
-  },
+  
 
   // ── Hable (Vidrift) ──
   // Response shape: { url: "https://...m3u8" } → handled by the "url" adapter.
