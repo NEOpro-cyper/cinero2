@@ -160,7 +160,7 @@ const SERVERS: ServerConfig[] = [
   // Confirmed live shape: { success: true, url: "https://<cors-worker>/https://.../master.m3u8",
   //   originalUrl, server: { name: "vBlaze" }, ... } → "vidfast" adapter.
   {
-    name: "Nebula",
+    name: "Kyro",
     base: "/api/ext/vidfast",
     path: "/api/ext/vidfast/api/movie/{id}?server=1&worker=1",
     tvPath: "/api/ext/vidfast/api/tv/{id}/{season}/{episode}?server=1&worker=1",
