@@ -945,6 +945,92 @@ function adaptZoko(json: any): NormalizedStream | undefined {
   return hlsFromUrl(url, { captions, label: "Zoko" });
 }
 
+/**
+ * `anivexa` — Anivexa anime streaming API (MAL-based, Anikoto sources).
+ *
+ * Response shape (probed live with MAL id 21 / One Piece):
+ *   {
+ *     "anilistId": 21,
+ *     "malId": 21,
+ *     "episode": 1,
+ *     "audio": "sub" | "dub",
+ *     "streams": [
+ *       {
+ *         "url": "https://<worker>.workers.dev/https://.../master.m3u8?token=...",
+ *         "type": "hls" | "embed",
+ *         "server": "HD-1" | "Vidstream-2" | ...,
+ *         "embedUrl": "https://megaplay.buzz/stream/...",
+ *         "referer": "https://megaplay.buzz/",
+ *         "subtitles": [{ "url": "...vtt", "label": "English",
+ *                         "srclang": "en", "default": true,
+ *                         "source": "HD-1" }],
+ *         "priority": 5,
+ *         "isActive": true,
+ *         "variant": "modern",
+ *         "intro": { "start": 31, "end": 111 },
+ *         "outro": { "start": 1376, "end": 1447 }
+ *       }, ...
+ *     ],
+ *     "subtitles": [ ...same shape, top-level aggregate... ],
+ *     "downloads": ...,
+ *     "headers": { "User-Agent": "...", "Referer": "https://megaplay.buzz/" }
+ *   }
+ *
+ * Selection rule:
+ *   1. Only HLS streams are playable (type "embed" entries are iframe
+ *      pages — skip them).
+ *   2. Prefer the entry flagged `isActive: true`, then highest
+ *      `priority` (HD-1 has priority 5).
+ *   3. Stream + subtitle URLs are already CORS-proxied through the
+ *      upstream's Cloudflare worker (Access-Control-Allow-Origin: *),
+ *      so captions get hasCorsRestrictions: false like Zoko.
+ */
+function adaptAnivexa(json: any): NormalizedStream | undefined {
+  if (!json || typeof json !== "object" || json.ok === false) return undefined;
+
+  const toCaptions = (list: any): NormalizedCaption[] =>
+    Array.isArray(list)
+      ? list
+          .filter((s: any) => s && looksLikeUrl(s.url))
+          .map((s: any, i: number) => ({
+            id: `anivexa-cap-${i}`,
+            language: String(s.srclang ?? s.lang ?? s.language ?? "en"),
+            url: s.url,
+            display: s.label ?? s.srclang ?? "Subtitles",
+            hasCorsRestrictions: false,
+            // anivexa flags the intended track with `default: true` — keep
+            // it so the player can auto-select the right subtitle.
+            isDefault: !!(s.default ?? s.isDefault),
+          }))
+      : [];
+
+  const streams: any[] = Array.isArray(json.streams) ? json.streams : [];
+  const usable = streams
+    .filter((s) => s && s.type === "hls" && looksLikeUrl(s.url))
+    .sort(
+      (a, b) =>
+        Number(Boolean(b.isActive)) - Number(Boolean(a.isActive)) ||
+        (Number(b.priority) || 0) - (Number(a.priority) || 0),
+    );
+
+  const pick = usable[0];
+  if (pick) {
+    // Prefer the picked stream's own subtitle list; fall back to the
+    // top-level aggregate subtitles.
+    const captions =
+      toCaptions(pick.subtitles).length > 0
+        ? toCaptions(pick.subtitles)
+        : toCaptions(json.subtitles);
+    return hlsFromUrl(pick.url, {
+      captions,
+      label: `Anivexa · ${pick.server ?? json.audio ?? "HD"}`,
+    });
+  }
+
+  // No HLS entry found — deep-scan fallback (same as other adapters).
+  return fromRawSources(collectRawSources(json), collectRawCaptions(json));
+}
+
 /* ------------------------------------------------------------------ */
 /*  dispatcher                                                         */
 /* ------------------------------------------------------------------ */
@@ -989,6 +1075,8 @@ export function adaptResponse(
       return adaptLordflix(body);
     case "zoko":
       return adaptZoko(body);
+    case "anivexa":
+      return adaptAnivexa(body);
     default:
       // Unknown responseType — try a series of fallbacks.
       return (

@@ -69,7 +69,8 @@ export interface ServerConfig {
     | "url"
     | "hable"
     | "lordflix"
-    | "zoko";
+    | "zoko"
+    | "anivexa";
   headers?: Record<string, string>;
   quality?: string;
   /**
@@ -84,6 +85,38 @@ export interface ServerConfig {
 }
 
 const SERVERS: ServerConfig[] = [
+  // ── Anivexa (anime-only) — MAL-based streaming API (Anikoto sources) ──
+  // Anime only — uses MyAnimeList ids, would 404 for TMDB ids.
+  // Skipped for movies/shows (see mediaTypes).
+  //
+  // Upstream URL pattern:
+  //   https://anivexa-api-sigma.vercel.app/watch/anikoto/{malId}/{sub|dub}/anikoto-{episode}?worker=1
+  //   {id}       → the MyAnimeList ID (cross-linked on AniList via idMal)
+  //   {category} → "sub" or "dub" (from the player's Sub/Dub setting)
+  //   {episode}  → episode number (embedded in the "anikoto-{episode}"
+  //                path segment — the {episode} placeholder replaces ALL
+  //                occurrences, so "anikoto-{episode}" works directly)
+  //
+  // All requests go through the server-side reverse proxy at
+  // /api/ext/anivexa/* — the browser never sees the Vercel host.
+  //
+  // Response shape:
+  //   { anilistId, malId, episode, audio, streams: [...], subtitles: [...] }
+  //   streams[] entries: { url (HLS, already CORS-proxied via worker),
+  //     type: "hls" | "embed", server: "HD-1", subtitles: [{url, label,
+  //     srclang, default}], priority, isActive, intro, outro }
+  //   → handled by the "anivexa" adapter.
+  {
+    name: "Anivexa",
+    base: "/api/ext/anivexa",
+    path: "/api/ext/anivexa/watch/anikoto/{id}/{category}/anikoto-1?worker=1",
+    tvPath:
+      "/api/ext/anivexa/watch/anikoto/{id}/{category}/anikoto-{episode}?worker=1",
+    responseType: "anivexa",
+    timeout: 20000,
+    mediaTypes: ["anime"],
+  },
+
   // ── Zoko (anime-only) — Jikan/MAL-based streaming API ──
   // Anime only — uses MyAnimeList ids, would 404 for TMDB ids.
   // Skipped for movies/shows (see mediaTypes).

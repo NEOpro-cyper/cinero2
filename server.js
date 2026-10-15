@@ -88,6 +88,10 @@ function safeJoin(base, target) {
 //
 // `timeout` (ms) is optional — defaults to 20000.
 const STREAMING_PROXY_ROUTES = [
+  // Anivexa — anime streaming via MAL id:
+  //   /watch/anikoto/{malId}/{sub|dub}/anikoto-{episode}?worker=1
+  // (streaming only — anime METADATA always comes from AniList directly)
+  { prefix: "/api/ext/anivexa/",    upstream: process.env.ANIVEXA_UPSTREAM    || "https://anivexa-api-sigma.vercel.app" },
   // Zoko — anime streaming via MAL id: /api/mal/{sub|dub}/{id}/{episode}
   // (streaming only — anime METADATA always comes from AniList directly)
   { prefix: "/api/ext/zoko/",        upstream: process.env.ZOKO_UPSTREAM        || "https://zoko.speedoflight.buzz" },
@@ -131,8 +135,10 @@ const ROTATING_PROXY_URL =
 // Configure via env (recommended):  REDIS_URL="redis://..."
 // If redis is unreachable the app behaves exactly as before (just
 // uncached) — every redis call is failure-tolerant.
-const REDIS_URL =
-  process.env.REDIS_URL || "redis://default:anilist24@r5q1yih3k7bih9kdnps5yk8k:6379/0";
+//
+// SECURITY: never hardcode a Redis password here — it lives in git.
+// Set REDIS_URL in your hosting dashboard (Coolify/Vercel/PM2 env) instead.
+const REDIS_URL = process.env.REDIS_URL || "";
 
 let redis = null;
 try {
