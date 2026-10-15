@@ -160,7 +160,50 @@ function readBody(req) {
   });
 }
 
+// ── Same-origin guard ─────────────────────────────────────────────
+// /api/ext/* must only be usable by OUR frontend. Requests without an
+// Origin/Referer matching this deployment (curl, address-bar, other
+// sites) get 403 instead of the proxied upstream response.
+// Knobs: DISABLE_ORIGIN_GUARD=1, EXTRA_ALLOWED_ORIGINS=a.com,b.org
+function proxyRequestAllowed(req) {
+  if (process.env.DISABLE_ORIGIN_GUARD === "1") return true;
+  const host = String(req.headers.host || "").toLowerCase().split(":")[0];
+  const extra = new Set(
+    (process.env.EXTRA_ALLOWED_ORIGINS || "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, "").split(":")[0])
+      .filter(Boolean)
+  );
+  const isLocal = (h) =>
+    h === "localhost" || h === "127.0.0.1" || h === "0.0.0.0" ||
+    h === "[::1]" || h.endsWith(".localhost");
+  const matches = (raw) => {
+    try {
+      const h = new URL(raw).hostname.toLowerCase();
+      return (!!host && h === host) || extra.has(h) || isLocal(h);
+    } catch {
+      return false;
+    }
+  };
+  const origin = req.headers.origin;
+  if (origin && origin !== "null") return matches(origin);
+  const referer = req.headers.referer;
+  if (referer) return matches(referer);
+  return false; // curl / address-bar / server-side scripts
+}
+
 module.exports = async function handler(req, res) {
+  // Protection: don't leak the upstream JSON to non-same-origin visitors.
+  if (!proxyRequestAllowed(req)) {
+    res.writeHead(403, {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+      ...corsHeaders(),
+    });
+    res.end(JSON.stringify({ error: "Forbidden" }));
+    return;
+  }
+
   // CORS preflight (requests are same-origin in practice — kept for safety)
   if (req.method === "OPTIONS") {
     res.writeHead(204, corsHeaders());

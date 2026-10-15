@@ -263,6 +263,15 @@ Each server can specify a `streamProxy` URL that's prepended to the stream URL r
 
 If no per-server `streamProxy` is configured, the global `VITE_CORS_PROXY_URL` from `config.js` is used as a fallback.
 
+### API proxy protection (same-origin guard)
+
+The `/api/ext/*` proxy routes only answer requests that come from the deployment itself: the request must carry an `Origin` or `Referer` header whose host matches the site. Anyone who opens an `/api/ext/...` URL directly (curl, address-bar visits, other websites) gets `403 Forbidden` instead of the upstream JSON. `localhost` / `127.0.0.1` are always allowed for development. Two environment knobs:
+
+- `DISABLE_ORIGIN_GUARD=1` — turn the guard off entirely (not recommended)
+- `EXTRA_ALLOWED_ORIGINS=partner.example,other.example` — comma-separated extra allowed hosts
+
+The same guard exists in the Vercel serverless catch-all (`api/ext/[...path].js`), so Vercel deployments are protected identically.
+
 ---
 
 ## 5. Verification checklist

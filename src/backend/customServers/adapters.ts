@@ -1144,44 +1144,87 @@ function adaptVidfast(json: any): NormalizedStream | undefined {
 }
 
 /**
- * `xpass` — Xpass API (Pulsar). TWO-STEP flow, resolved in fetcher.ts:
+ * `xpass` — Xpass API (Pulsar).
  *
- *   Step 1 (this response): GET /api/movie/{id}?server=1&worker=1
- *     { mode: "single", tmdb_id, positionKey, selectedServer: "TIK 1",
- *       responseTimeMs, servers: [{ name: "TIK 1",
- *         url: "https://play.xpass.top/mdata/<hash>/1/playlist.json" }, ...] }
+ * PRIMARY — the upstream resolves streams server-side and returns
+ * ready-to-play sources[] in the FIRST response (verified live on both
+ * cache HITs and fresh MISSes):
+ *   { mode, selectedServer: "VIP 1",
+ *     servers: [{ name, url: "https://play.xpass.top/.../playlist.json" }],
+ *     sources: [{ file: "https://<cors-worker>/https://vip.1x2.space/.../master.m3u8",
+ *                 type: "hls", label: "VIP 1", server: "VIP 1", id }],
+ *     subtitles: "https://sub.1x2.space/api/tv/276161/1/1" }
+ *   → play sources[].file DIRECTLY (already CORS-wrapped by the upstream).
+ *   No playlist.json round-trip. fetcher.ts resolves the `subtitles`
+ *   index into `subtitlesList` (CORS-open JSON with relative VTT URLs).
  *
- *   Step 2 (fetched by fetcher.ts via /api/ext/xpassplay/*, which keeps
- *   the browser's User-Agent — enough to pass the Cloudflare check):
- *     { playlist: [{ sources: [{ file: "...master.m3u8", type: "hls",
- *         label: "TIK 2", id: "..." }] }], safarihlsjs: true }
- *
- * fetcher.ts merges step 2 into the step-1 body as `playlists:
- * [{ server, data }]` before dispatching here.
+ * FALLBACK — when sources[] is empty (dead title / stale cache),
+ * fetcher.ts fetches servers[].url playlist.json files via
+ * /api/ext/xpassplay/* and merges them as `playlists: [{ server, data }]`
+ * (legacy two-step path).
  */
 function adaptXpass(json: any): NormalizedStream | undefined {
   if (!json || typeof json !== "object") return undefined;
-  const playlists: any[] = Array.isArray(json.playlists) ? json.playlists : [];
 
+  const captions = xpassCaptions(json);
+
+  // 1) Direct sources — the normal path, zero extra requests.
+  const direct: any[] = Array.isArray(json.sources) ? json.sources : [];
+  const selected =
+    typeof json.selectedServer === "string" ? json.selectedServer : undefined;
+  const playable = (s: any) =>
+    s && looksLikeUrl(s.file) && (isHlsUrl(s.file) || isMp4Url(s.file));
+  const pick =
+    direct.find(
+      (s: any) =>
+        playable(s) && (!selected || s.server === selected || s.label === selected),
+    ) ?? direct.find(playable);
+  if (pick) {
+    const name = pick.label ?? pick.server ?? "Xpass";
+    if (isHlsUrl(pick.file)) {
+      return hlsFromUrl(pick.file, { captions, label: `Xpass · ${name}` });
+    }
+    return fileFromQualities(
+      [{ quality: "unknown", url: pick.file, type: "mp4" as const }],
+      { captions },
+    );
+  }
+
+  // 2) Fallback — legacy playlist.json data merged by fetcher.ts.
+  const playlists: any[] = Array.isArray(json.playlists) ? json.playlists : [];
   for (const pl of playlists) {
     const data = pl?.data;
     const groups = Array.isArray(data?.playlist) ? data.playlist : [];
     for (const group of groups) {
       const sources = Array.isArray(group?.sources) ? group.sources : [];
-      const pick = sources.find(
+      const plPick = sources.find(
         (s: any) => s && looksLikeUrl(s.file) && (isHlsUrl(s.file) || isMp4Url(s.file)),
       );
-      if (pick) {
-        const label = [pl.server, pick.label].filter(Boolean).join(" · ");
-        return hlsFromUrl(pick.file, { label: label || "Xpass" });
+      if (plPick) {
+        const label = [pl.server, plPick.label].filter(Boolean).join(" · ");
+        return hlsFromUrl(plPick.file, { captions, label: label || "Xpass" });
       }
     }
   }
-  // NOTE: intentionally NO deep-scan fallback here — the only URLs in the
-  // step-1 body are playlist.json manifests, which are not playable
-  // streams. Returning undefined lets the player fail over to the next
-  // server instead of feeding the player a JSON manifest.
+  // NOTE: intentionally NO deep-scan fallback — a naive deep scan would
+  // pick up servers[].url playlist.json manifests (not playable streams).
+  // Returning undefined lets the player fail over to the next server.
   return undefined;
+}
+
+/** subtitlesList (resolved by fetcher.ts) → player captions. */
+function xpassCaptions(json: any): NormalizedCaption[] {
+  const list: any[] = Array.isArray(json?.subtitlesList) ? json.subtitlesList : [];
+  return list
+    .filter((s: any) => s && looksLikeUrl(s.url))
+    .map((s: any, i: number) => ({
+      id: `xpass-cap-${i}`,
+      language: String(s.language ?? "en"),
+      url: s.url,
+      display: s.display ?? s.label ?? "Subtitles",
+      hasCorsRestrictions: false,
+      isDefault: !!s.isDefault,
+    }));
 }
 
 /**

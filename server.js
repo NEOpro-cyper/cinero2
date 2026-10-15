@@ -416,6 +416,41 @@ async function serveStreamingProxy(route, subPath, req, res) {
   });
 }
 
+// ── Same-origin guard for the streaming proxy routes ────────────────
+// /api/ext/* must only be usable by OUR frontend. Requests that carry
+// neither an Origin nor a Referer matching this deployment (curl,
+// address-bar visits, other sites) get 403 instead of the upstream
+// response. Knobs:
+//   DISABLE_ORIGIN_GUARD=1              → turn the guard off
+//   EXTRA_ALLOWED_ORIGINS=a.com,b.org   → extra allowed hosts
+// localhost / 127.0.0.1 are always allowed for development.
+function proxyRequestAllowed(req) {
+  if (process.env.DISABLE_ORIGIN_GUARD === "1") return true;
+  const host = String(req.headers.host || "").toLowerCase().split(":")[0];
+  const extra = new Set(
+    (process.env.EXTRA_ALLOWED_ORIGINS || "")
+      .split(",")
+      .map((s) => s.trim().toLowerCase().replace(/^https?:\/\//, "").split(":")[0])
+      .filter(Boolean)
+  );
+  const isLocal = (h) =>
+    h === "localhost" || h === "127.0.0.1" || h === "0.0.0.0" ||
+    h === "[::1]" || h.endsWith(".localhost");
+  const matches = (raw) => {
+    try {
+      const h = new URL(raw).hostname.toLowerCase();
+      return (!!host && h === host) || extra.has(h) || isLocal(h);
+    } catch {
+      return false;
+    }
+  };
+  const origin = req.headers.origin;
+  if (origin && origin !== "null") return matches(origin);
+  const referer = req.headers.referer;
+  if (referer) return matches(referer);
+  return false; // curl / address-bar / server-side scripts
+}
+
 function serve(req, res) {
   const parsed = url.parse(req.url, true);
   let pathname = decodeURIComponent(parsed.pathname || "/");
@@ -428,6 +463,18 @@ function serve(req, res) {
   // Streaming source reverse proxies — must be handled BEFORE the SPA fallback
   for (const route of STREAMING_PROXY_ROUTES) {
     if (pathname.startsWith(route.prefix)) {
+      // Protection: don't leak the upstream JSON to non-same-origin visitors.
+      if (!proxyRequestAllowed(req)) {
+        console.warn(
+          `[streaming-proxy ${route.prefix}] blocked non-same-origin request (${req.headers.origin || req.headers.referer || "no origin/referer"})`
+        );
+        res.writeHead(403, {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store",
+        });
+        res.end(JSON.stringify({ error: "Forbidden" }));
+        return;
+      }
       const subPath = pathname.slice(route.prefix.length - 1); // keep leading "/"
       return serveStreamingProxy(route, subPath, req, res);
     }

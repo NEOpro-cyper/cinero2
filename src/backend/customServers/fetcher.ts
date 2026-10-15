@@ -141,7 +141,7 @@ async function fetchWithTimeout(
 }
 
 /* ------------------------------------------------------------------ */
-/*  Xpass (Pulsar) two-step resolution                                 */
+/*  Xpass (Pulsar) resolution                                          */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -223,6 +223,86 @@ async function resolveXpassPlaylists(body: any): Promise<any> {
 }
 
 /**
+ * Does the step-1 body already carry a ready-to-play sources[] entry?
+ * The upstream resolves streams server-side and includes sources[] on
+ * BOTH cache HITs and fresh MISSes (verified live) — when present, NO
+ * playlist.json round-trip is needed; the file URL plays directly.
+ */
+function xpassHasDirectSources(body: any): boolean {
+  const sources: any[] = Array.isArray(body?.sources) ? body.sources : [];
+  return sources.some(
+    (s) =>
+      s &&
+      typeof s.file === "string" &&
+      /^https?:\/\//i.test(s.file) &&
+      !/playlist\.json/i.test(s.file),
+  );
+}
+
+/** Upstream language names ("english") → ISO-639-1-ish codes ("en"). */
+const XPASS_LANG_CODES: Record<string, string> = {
+  english: "en", arabic: "ar", french: "fr", spanish: "es", german: "de",
+  italian: "it", portuguese: "pt", russian: "ru", japanese: "ja",
+  korean: "ko", chinese: "zh", mandarin: "zh", cantonese: "zh",
+  hindi: "hi", urdu: "ur", bengali: "bn", tamil: "ta", telugu: "te",
+  turkish: "tr", indonesian: "id", malay: "ms", filipino: "tl",
+  thai: "th", vietnamese: "vi", dutch: "nl", polish: "pl",
+  swedish: "sv", danish: "da", norwegian: "no", finnish: "fi",
+  greek: "el", hebrew: "he", persian: "fa", ukrainian: "uk",
+  czech: "cs", romanian: "ro", hungarian: "hu",
+};
+
+function xpassLangCode(v: unknown): string {
+  const k = String(v ?? "").trim().toLowerCase();
+  if (XPASS_LANG_CODES[k]) return XPASS_LANG_CODES[k];
+  return k.length === 2 || k.length === 3 ? k : k.slice(0, 2);
+}
+
+/**
+ * The step-1 response carries `subtitles` as a URL to a JSON index
+ * (e.g. https://sub.1x2.space/api/tv/276161/1/1 → [{label, language,
+ * url: "/subtitle/.../English.vtt"}]). The index AND the VTT files are
+ * CORS-open (ACAO: *), so the browser fetches the index directly — no
+ * proxy hop, no /api/ext request. Resolved entries are attached as
+ * `subtitlesList` for the adapter. Any failure is silent: playback
+ * continues without captions.
+ */
+async function resolveXpassSubtitles(body: any): Promise<any> {
+  const indexUrl = body?.subtitles;
+  if (typeof indexUrl !== "string" || !/^https?:\/\//i.test(indexUrl)) {
+    return body;
+  }
+  try {
+    const res = await fetchWithTimeout(
+      indexUrl,
+      { headers: { Accept: "application/json" }, credentials: "omit" },
+      8000,
+    );
+    if (!res.ok) return body;
+    const list = await res.json();
+    if (!Array.isArray(list)) return body;
+    let base: URL;
+    try {
+      base = new URL(indexUrl);
+    } catch {
+      return body;
+    }
+    const subtitlesList = list
+      .filter((s: any) => s && typeof s.url === "string" && s.url.length > 0)
+      .map((s: any, i: number) => ({
+        id: `xpass-cap-${i}`,
+        language: xpassLangCode(s.language ?? s.label),
+        url: new URL(s.url, base).toString(),
+        display: s.label ?? s.language ?? "Subtitles",
+        isDefault: xpassLangCode(s.language ?? s.label) === "en",
+      }));
+    return { ...body, subtitlesList };
+  } catch {
+    return body;
+  }
+}
+
+/**
  * Fetch a stream from a custom server.
  * Returns a NormalizedStream on success, or throws on failure.
  */
@@ -284,12 +364,20 @@ export async function fetchCustomServerStream(
     }
   }
 
-  // Xpass needs a second fetch: step 1 only returns playlist.json URLs.
-  // Resolve them (via the /api/ext/xpassplay/* reverse proxy) and merge
-  // the parsed playlists into the body before dispatching to the adapter.
+  // Xpass: the upstream now resolves streams server-side and returns
+  // ready-to-play sources[] in the FIRST response (cache HIT or MISS) —
+  // pass that straight through, zero extra requests. Only when sources[]
+  // is empty do we fall back to the legacy playlist.json resolution
+  // (via /api/ext/xpassplay/*). The subtitle index URL is resolved here
+  // too (direct browser fetch — sub.1x2.space sends ACAO: *).
   let bodyForAdapter: unknown = body;
   if (server.responseType === "xpass" && body && typeof body === "object") {
-    bodyForAdapter = await resolveXpassPlaylists(body);
+    let xpassBody: any = body;
+    if (!xpassHasDirectSources(xpassBody)) {
+      xpassBody = await resolveXpassPlaylists(xpassBody);
+    }
+    xpassBody = await resolveXpassSubtitles(xpassBody);
+    bodyForAdapter = xpassBody;
   }
 
   const stream = adaptResponse(server.responseType, bodyForAdapter);
