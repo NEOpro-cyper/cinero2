@@ -165,6 +165,18 @@ const SERVERS: ServerConfig[] = [
   // ── Nebula (Vidfast upstream, server=1) ──
   // Confirmed live shape: { success: true, url: "https://<cors-worker>/https://.../master.m3u8",
   //   originalUrl, server: { name: "vBlaze" }, ... } → "vidfast" adapter.
+
+   {
+    name: "Zenith",
+    base: "/api/ext/vidora",
+    path: "/api/ext/vidora/api/movie/{id}?worker=1",
+    tvPath: "/api/ext/vidora/api/tv/{id}/{season}/{episode}?worker=1",
+    responseType: "vidora",
+    timeout: 15000,
+    mediaTypes: ["movie", "show"],
+  },
+
+  
   {
     name: "Kyro",
     base: "/api/ext/vidfast",
