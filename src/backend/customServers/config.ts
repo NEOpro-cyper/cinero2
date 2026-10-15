@@ -199,6 +199,31 @@ const SERVERS: ServerConfig[] = [
     mediaTypes: ["movie", "show"],
   },
 
+
+   // ── Vega (VidRock upstream, server=orion) ──
+  {
+    name: "Vega",
+    base: "/api/ext/vidrock",
+    path: "/api/ext/vidrock/api/movie/{id}?server=orion&worker=1",
+    tvPath: "/api/ext/vidrock/api/tv/{id}/{season}/{episode}?server=orion&worker=1",
+    responseType: "sources",
+    quality: "1080p",
+    timeout: 15000,
+    mediaTypes: ["movie", "show"],
+  },
+
+// ── Comet (Vidnest upstream) ──
+  {
+    name: "Comet",
+    base: "/api/ext/nest",
+    path: "/api/ext/nest/api/movie/{id}?worker=1",
+    tvPath: "/api/ext/nest/api/tv/{id}/{season}/{episode}?worker=1",
+    responseType: "vidnest",
+    quality: "1080p",
+    timeout: 15000,
+    mediaTypes: ["movie", "show"],
+  },
+  
   // ── Pulsar (Xpass upstream) ──
   // TWO-STEP API: step 1 returns { servers: [{ name, url: playlist.json }] },
   // step 2 fetches the playlist.json (play.xpass.top, CF-protected —
@@ -214,17 +239,7 @@ const SERVERS: ServerConfig[] = [
     mediaTypes: ["movie", "show"],
   },
 
-  // ── Comet (Vidnest upstream) ──
-  {
-    name: "Comet",
-    base: "/api/ext/nest",
-    path: "/api/ext/nest/api/movie/{id}?worker=1",
-    tvPath: "/api/ext/nest/api/tv/{id}/{season}/{episode}?worker=1",
-    responseType: "vidnest",
-    quality: "1080p",
-    timeout: 15000,
-    mediaTypes: ["movie", "show"],
-  },
+  
 
   // ── Luna (VidRock, server=luna — MP4/HLS multi-quality) ──
   //{
@@ -238,18 +253,7 @@ const SERVERS: ServerConfig[] = [
 //    mediaTypes: ["movie", "show"],
  // },
 
-  // ── Vega (VidRock upstream, server=orion) ──
-  {
-    name: "Vega",
-    base: "/api/ext/vidrock",
-    path: "/api/ext/vidrock/api/movie/{id}?server=orion&worker=1",
-    tvPath: "/api/ext/vidrock/api/tv/{id}/{season}/{episode}?server=orion&worker=1",
-    responseType: "sources",
-    quality: "1080p",
-    timeout: 15000,
-    mediaTypes: ["movie", "show"],
-  },
-
+ 
   // ── Astra (Lordflix upstream, server=Scout & worker=1) ──
   {
     name: "Astra",
@@ -279,15 +283,6 @@ const SERVERS: ServerConfig[] = [
   // Confirmed live shape: { result: true, sources: [{ url: "https://<cors-worker>/.../master.m3u8",
   //   tracks: [] }] }; failure: { result: false, message: "Movie not yet encoded" }
   // → "vidora" adapter (result:false → undefined → auto-failover).
-  {
-    name: "Zenith",
-    base: "/api/ext/vidora",
-    path: "/api/ext/vidora/api/movie/{id}?worker=1",
-    tvPath: "/api/ext/vidora/api/tv/{id}/{season}/{episode}?worker=1",
-    responseType: "vidora",
-    timeout: 15000,
-    mediaTypes: ["movie", "show"],
-  },
 
    // ── Lumen (Lordflix upstream, server=Lisbon) ──
   {
