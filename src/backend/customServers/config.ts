@@ -328,17 +328,17 @@ const SERVERS: ServerConfig[] = [
 //  },
 
   // ── CinetaroCDN ──
-  {
-    name: "CinetaroCDN",
-    base: "/api/ext/cinetarocdn",
-    path: "/api/ext/cinetarocdn/api/embek?tmdb_id={id}&type=movie",
-    tvPath:
-      "/api/ext/cinetarocdn/api/embek?tmdb_id={id}&type=tv&season={season}&episode={episode}",
-    responseType: "qualities",
-    quality: "AUTO",
-    timeout: 15000,
-    mediaTypes: ["movie", "show"],
-  },
+ // {
+//    name: "Shikra",
+ //   base: "/api/ext/cinetarocdn",
+//    path: "/api/ext/cinetarocdn/api/embek?tmdb_id={id}&type=movie",
+//    tvPath:
+//      "/api/ext/cinetarocdn/api/embek?tmdb_id={id}&type=tv&season={season}&episode={episode}",
+//    responseType: "qualities",
+//    quality: "AUTO",
+//    timeout: 15000,
+//    mediaTypes: ["movie", "show"],
+//  },
 ];
 
 export default SERVERS;
