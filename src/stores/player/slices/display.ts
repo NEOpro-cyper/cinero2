@@ -33,6 +33,17 @@ export const createDisplaySlice: MakeSlice<DisplaySlice> = (set, get) => ({
         s.mediaPlaying.hasPlayedOnce = true;
         s.mediaPlaying.isPaused = false;
         s.mediaPlaying.isPlaying = true;
+        // Track which servers actually reached playback. When the
+        // current server dies later, the player falls back to the
+        // most recent previous entry (see PlaybackErrorPart).
+        if (
+          s.sourceId &&
+          s.workingSourceHistory[s.workingSourceHistory.length - 1] !==
+            s.sourceId
+        ) {
+          s.workingSourceHistory.push(s.sourceId);
+          if (s.workingSourceHistory.length > 6) s.workingSourceHistory.shift();
+        }
       }),
     );
     newDisplay.on("fullscreen", (isFullscreen) =>

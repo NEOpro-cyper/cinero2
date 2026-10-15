@@ -120,6 +120,10 @@ export interface SourceSlice {
   failedSourcesPerMedia: Record<string, string[]>; // mediaKey -> array of failed sourceIds
   failedEmbedsPerMedia: Record<string, Record<string, string[]>>; // mediaKey -> sourceId -> array of failed embedIds
   resumeFromSourceId: string | null;
+  /** Servers that actually reached playback for the current media,
+   * most recent last. Used to fall back to the previously working
+   * server when the current one fails (see PlaybackErrorPart). */
+  workingSourceHistory: string[];
   setStatus(status: PlayerStatus): void;
   setSource(
     stream: SourceSliceSource,
@@ -144,6 +148,10 @@ export interface SourceSlice {
   addFailedEmbed(sourceId: string, embedId: string): void;
   clearFailedSources(mediaKey?: string): void;
   clearFailedEmbeds(mediaKey?: string): void;
+  /** Last (most recent) server in the working history that is not the
+   *  currently failing source and not marked as failed. Returns null
+   *  when there is nothing to fall back to. */
+  getPreviousWorkingSource(currentSourceId: string | null): string | null;
   setResumeFromSourceId(sourceId: string | null): void;
   reset(): void;
 }
@@ -207,6 +215,7 @@ export const createSourceSlice: MakeSlice<SourceSlice> = (set, get) => ({
   failedSourcesPerMedia: {},
   failedEmbedsPerMedia: {},
   resumeFromSourceId: null,
+  workingSourceHistory: [],
   caption: {
     selected: null,
     asTrack: false,
@@ -249,6 +258,8 @@ export const createSourceSlice: MakeSlice<SourceSlice> = (set, get) => ({
         // This ensures a fresh start for each media/episode
         delete s.failedSourcesPerMedia[newMediaKey];
         delete s.failedEmbedsPerMedia[newMediaKey];
+        // Working-server history is per media/episode too
+        s.workingSourceHistory = [];
       }
     });
   },
@@ -409,6 +420,23 @@ export const createSourceSlice: MakeSlice<SourceSlice> = (set, get) => ({
       s.resumeFromSourceId = sourceId;
     });
   },
+  getPreviousWorkingSource(currentSourceId) {
+    const store = get();
+    const mediaKey = getMediaKey(store.meta);
+    const failed = mediaKey
+      ? store.failedSourcesPerMedia[mediaKey] ?? []
+      : [];
+    const history = store.workingSourceHistory;
+    // Walk from most recent to oldest — skip the currently failing
+    // source and anything already marked as failed.
+    for (let i = history.length - 1; i >= 0; i -= 1) {
+      const id = history[i];
+      if (id === currentSourceId) continue;
+      if (failed.includes(id)) continue;
+      return id;
+    }
+    return null;
+  },
   reset() {
     get().clearSkipSegments?.();
     set((s) => {
@@ -426,6 +454,7 @@ export const createSourceSlice: MakeSlice<SourceSlice> = (set, get) => ({
       s.failedSourcesPerMedia = {};
       s.failedEmbedsPerMedia = {};
       s.resumeFromSourceId = null;
+      s.workingSourceHistory = [];
       this.clearTranslateTask();
       s.caption = {
         selected: null,

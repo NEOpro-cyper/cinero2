@@ -213,6 +213,23 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
         const exceptions = [
           "Failed to execute 'appendBuffer' on 'SourceBuffer': This SourceBuffer has been removed from the parent media source.",
         ];
+
+        // ── Recovery state (per source load — the Hls instance is
+        // recreated for every source) ─────────────────────────────
+        // The player must NOT abandon a server that is still playable.
+        // Before emitting an error (which switches to the next server)
+        // we try to recover in place:
+        //   • network errors  → hls.startLoad()
+        //   • media errors    → hls.recoverMediaError() (+ codec swap)
+        // Every successfully buffered fragment resets the budgets, so
+        // a stream that recovered from one hiccup gets a fresh budget
+        // for the next one.
+        let manifestLoadedOnce = false;
+        let networkRecoverAttempts = 0;
+        let mediaRecoverAttempts = 0;
+        const MAX_NETWORK_RECOVERY_ATTEMPTS = 2;
+        const MAX_MEDIA_RECOVERY_ATTEMPTS = 2;
+
         hls?.on(Hls.Events.ERROR, (event, data) => {
           console.error("HLS error", data);
 
@@ -242,55 +259,83 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
             url: (data as any).url,
           };
 
-          // ── Error-to-fallback logic ───────────────────────────
-          // We want to trigger auto-fallback (try next server) for
-          // ANY fatal HLS error, not just fragment errors matching
-          // the source URL. Common fatal scenarios:
-          //   • manifestLoadError     — server down / 404 / CORS
-          //   • manifestParsingError  — invalid m3u8
-          //   • levelLoadError        — quality level failed
-          //   • fragLoadError         — segment download failed
-          //   • bufferAppendError     — can't decode content
-          //   • bufferFullError       — out of memory
           const isException = exceptions.includes(data.error?.message);
-          const isManifestError = [
-            "manifestLoadError",
-            "manifestParsingError",
-            "manifestLoadTimeOut",
-          ].includes(data.details);
-          const isLevelError = [
-            "levelLoadError",
-            "levelLoadTimeOut",
-            "levelParseError",
-          ].includes(data.details);
+          if (isException) return;
 
-          if (data.fatal && !isException) {
-            // Any fatal error → trigger fallback
-            emit("error", {
-              message: data.error?.message || `HLS fatal: ${data.details}`,
-              stackTrace: data.error?.stack,
-              errorName: data.error?.name || data.details,
-              type: "hls",
-              hls: { ...hlsErrorInfo, fatal: true },
-            });
-          } else if (isManifestError || isLevelError) {
-            // Non-fatal manifest/level errors are still unrecoverable
-            // for this source — trigger fallback immediately rather
-            // than waiting for HLS.js to exhaust retries.
-            // Mark as fatal so PlaybackErrorPart marks source as failed.
-            emit("error", {
-              message: isManifestError
-                ? `Failed to load HLS manifest: ${data.details}`
-                : `Failed to load quality level: ${data.details}`,
-              stackTrace: data.error?.stack || "",
-              errorName: data.error?.name || data.details,
-              type: "hls",
-              hls: { ...hlsErrorInfo, fatal: true },
-            });
+          if (!data.fatal) {
+            // Non-fatal errors: hls.js retries these internally via
+            // its manifest/level/fragment load policies (and ABR can
+            // simply move to another level). Emitting an error here
+            // used to switch servers while the stream was still
+            // playable — so we only fast-fail when the manifest has
+            // NEVER loaded for this source (URL is genuinely dead).
+            const isManifestError = [
+              "manifestLoadError",
+              "manifestParsingError",
+              "manifestLoadTimeOut",
+            ].includes(data.details);
+            if (isManifestError && !manifestLoadedOnce) {
+              emit("error", {
+                message: `Failed to load HLS manifest: ${data.details}`,
+                stackTrace: data.error?.stack || "",
+                errorName: data.error?.name || data.details,
+                type: "hls",
+                hls: { ...hlsErrorInfo, fatal: true },
+              });
+            }
+            return;
           }
+
+          // Fatal error — attempt in-place recovery before giving up.
+          if (
+            data.type === Hls.ErrorTypes.NETWORK_ERROR &&
+            networkRecoverAttempts < MAX_NETWORK_RECOVERY_ATTEMPTS
+          ) {
+            networkRecoverAttempts += 1;
+            console.warn(
+              `HLS network error (${data.details}) — attempting recovery ` +
+                `(${networkRecoverAttempts}/${MAX_NETWORK_RECOVERY_ATTEMPTS})`,
+            );
+            hls?.startLoad();
+            return;
+          }
+          if (
+            data.type === Hls.ErrorTypes.MEDIA_ERROR &&
+            mediaRecoverAttempts < MAX_MEDIA_RECOVERY_ATTEMPTS
+          ) {
+            mediaRecoverAttempts += 1;
+            // Second media error: also swap the audio codec before
+            // recovering (standard hls.js recovery ladder).
+            if (mediaRecoverAttempts >= MAX_MEDIA_RECOVERY_ATTEMPTS)
+              hls?.swapAudioCodec();
+            console.warn(
+              `HLS media error (${data.details}) — attempting recovery ` +
+                `(${mediaRecoverAttempts}/${MAX_MEDIA_RECOVERY_ATTEMPTS})`,
+            );
+            hls?.recoverMediaError();
+            return;
+          }
+
+          // Recovery exhausted (or unknown fatal type) — this source
+          // is truly broken, let the app try the next server.
+          emit("error", {
+            message:
+              data.error?.message || `HLS fatal: ${data.details}`,
+            stackTrace: data.error?.stack,
+            errorName: data.error?.name || data.details,
+            type: "hls",
+            hls: { ...hlsErrorInfo, fatal: true },
+          });
+        });
+        // Successful buffering = playback is progressing again.
+        // Reset the recovery budgets so future hiccups get their own.
+        hls?.on(Hls.Events.FRAG_BUFFERED, () => {
+          networkRecoverAttempts = 0;
+          mediaRecoverAttempts = 0;
         });
         hls.on(Hls.Events.MANIFEST_LOADED, () => {
           if (!hls) return;
+          manifestLoadedOnce = true;
           reportLevels();
           setupQualityForHls();
           reportAudioTracks();
@@ -390,6 +435,17 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
   function setSource() {
     if (!videoElement || !source) return;
     setupSource(videoElement, source);
+  }
+
+  // ── Video element listeners ──────────────────────────────
+  // Attached ONCE per video element (in processVideoElement), NOT in
+  // setSource() — setSource() runs on every display.load() and used
+  // to stack duplicate listeners on the same element, which made the
+  // player emit multiple error/play events per occurrence.
+  let attachedVideoElement: HTMLVideoElement | null = null;
+  function attachVideoElementListeners() {
+    const videoElement = attachedVideoElement;
+    if (!videoElement) return;
 
     videoElement.addEventListener("play", () => {
       emit("play", undefined);
@@ -397,6 +453,13 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
     });
     videoElement.addEventListener("error", () => {
       const err = videoElement?.error ?? null;
+      // Ignore spurious errors: MEDIA_ERR_ABORTED (code 1) fires on
+      // normal source swaps (removeAttribute + load()) and does NOT
+      // mean the stream broke — emitting it here used to switch
+      // servers while the stream was still playable.
+      if (!err || err.code === 1) return;
+      // Ignore errors on an element with no source loaded.
+      if (!videoElement?.currentSrc) return;
       const errorDetails = getMediaErrorDetails(err);
       emit("error", {
         errorName: errorDetails.name,
@@ -687,6 +750,12 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
     processVideoElement(video) {
       destroyVideoElement();
       videoElement = video;
+      // Only attach listeners once per element — re-registering on the
+      // same element stacks duplicate event listeners.
+      if (video !== attachedVideoElement) {
+        attachedVideoElement = video;
+        attachVideoElementListeners();
+      }
       setSource();
       this.setVolume(lastVolume);
     },

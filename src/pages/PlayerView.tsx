@@ -47,6 +47,11 @@ export function RealPlayerView() {
   const [resumeFromSourceId, setResumeFromSourceId] = useState<string | null>(
     null,
   );
+  // Server to try FIRST when resuming after a playback failure
+  // (previously working server fallback). Null = no preference.
+  const [resumeTryFirstSourceId, setResumeTryFirstSourceId] = useState<
+    string | null
+  >(null);
   const storeResumeFromSourceId = usePlayerStore((s) => s.resumeFromSourceId);
   const setResumeFromSourceIdInStore = usePlayerStore(
     (s) => s.setResumeFromSourceId,
@@ -189,10 +194,13 @@ export function RealPlayerView() {
   }, [setShouldStartFromBeginning, setStatus]);
 
   const handleResumeScraping = useCallback(
-    (startFromSourceId: string) => {
+    (startFromSourceId: string, tryFirstSourceId?: string | null) => {
       // Set resume source first
       setResumeFromSourceId(startFromSourceId);
       setResumeFromSourceIdInStore(startFromSourceId);
+      // Server to try FIRST (previously working server fallback).
+      // Null clears any stale value from a previous resume.
+      setResumeTryFirstSourceId(tryFirstSourceId ?? null);
       // Then change status in next tick to ensure re-render
       setTimeout(() => {
         setStatus(playerStatus.SCRAPING);
@@ -265,6 +273,7 @@ export function RealPlayerView() {
             startFromSourceId={
               resumeFromSourceId || storeResumeFromSourceId || undefined
             }
+            tryFirstSourceId={resumeTryFirstSourceId}
             onResult={(sources, sourceOrder) => {
               setErrorData({
                 sourceOrder,
@@ -274,6 +283,7 @@ export function RealPlayerView() {
               // Clear resume state after scraping
               setResumeFromSourceId(null);
               setResumeFromSourceIdInStore(null);
+              setResumeTryFirstSourceId(null);
             }}
             onGetStream={playAfterScrape}
           />

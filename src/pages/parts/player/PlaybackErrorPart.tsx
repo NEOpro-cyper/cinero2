@@ -16,7 +16,7 @@ import { usePreferencesStore } from "@/stores/preferences";
 import { ErrorCardInModal } from "../errors/ErrorCard";
 
 export interface PlaybackErrorPartProps {
-  onResume?: (startFromSourceId: string) => void;
+  onResume?: (startFromSourceId: string, tryFirstSourceId?: string | null) => void;
   currentSourceId?: string | null;
 }
 
@@ -72,7 +72,18 @@ export function PlaybackErrorPart(props: PlaybackErrorPartProps) {
         addFailedSource(currentSourceId);
       }
 
-      if (!hasOpenedSettings.current && !enableAutoResumeOnPlaybackError) {
+      // If we can fall back to the previously working server, the
+      // player auto-recovers — no need to open the source picker or
+      // wipe the saved last-successful-source.
+      const canFallBackToWorkingServer = !!usePlayerStore
+        .getState()
+        .getPreviousWorkingSource(currentSourceId);
+
+      if (
+        !hasOpenedSettings.current &&
+        !enableAutoResumeOnPlaybackError &&
+        !canFallBackToWorkingServer
+      ) {
         hasOpenedSettings.current = true;
         // Reset the last successful source when a playback error occurs
         setLastSuccessfulSource(null);
@@ -93,25 +104,30 @@ export function PlaybackErrorPart(props: PlaybackErrorPartProps) {
     enableAutoResumeOnPlaybackError,
   ]);
 
-  // Automatically resume scraping from the next source if enabled
+  // Automatically resume scraping on playback error:
+  //   1. Prefer falling back to the PREVIOUSLY WORKING server (e.g. the
+  //      user manually switched away from it and the new one failed) —
+  //      re-scraping it also refreshes its stream URL.
+  //   2. Otherwise, if auto-resume is enabled, continue scraping from
+  //      the next source in the failover order.
   useEffect(() => {
-    if (
-      playbackError &&
-      !hasAutoResumed.current &&
-      enableAutoResumeOnPlaybackError &&
-      props.currentSourceId &&
-      props.onResume
-    ) {
-      hasAutoResumed.current = true;
-      // Immediately call resume without delay since we don't need the overlay
-      props.onResume!(props.currentSourceId!);
+    if (!(playbackError && props.currentSourceId && props.onResume)) return;
+    if (hasAutoResumed.current) return;
+    hasAutoResumed.current = true;
+
+    const fallbackSourceId = usePlayerStore
+      .getState()
+      .getPreviousWorkingSource(props.currentSourceId);
+
+    if (fallbackSourceId) {
+      props.onResume(props.currentSourceId, fallbackSourceId);
+      return;
     }
-  }, [
-    playbackError,
-    enableAutoResumeOnPlaybackError,
-    props.currentSourceId,
-    props.onResume,
-  ]);
+
+    if (enableAutoResumeOnPlaybackError) {
+      props.onResume(props.currentSourceId);
+    }
+  }, [playbackError, props, enableAutoResumeOnPlaybackError]);
 
   const handleOpenSourcePicker = () => {
     settingsRouter.open();

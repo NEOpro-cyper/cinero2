@@ -207,7 +207,11 @@ export function useScrape() {
   const miroruCategory = usePreferencesStore((s) => s.miroruCategory);
 
   const startScraping = useCallback(
-    async (media: ScrapeMedia, startFromSourceId?: string) => {
+    async (
+      media: ScrapeMedia,
+      startFromSourceId?: string,
+      tryFirstSourceId?: string | null,
+    ) => {
       const providerInstance = getProviders();
       const allSources = providerInstance.listSources();
       const playerState = usePlayerStore.getState();
@@ -326,6 +330,18 @@ export function useScrape() {
       filteredSourceOrder = filteredSourceOrder.filter(
         (id) => !failedSources.includes(id),
       );
+
+      // ── Previous-working-server fallback ────────────────────
+      // When the player falls back to the previously working server
+      // after a playback failure, that server must be tried FIRST —
+      // even if it sits earlier in the failover order than the resume
+      // point (the slicing above would otherwise exclude it).
+      if (tryFirstSourceId) {
+        filteredSourceOrder = [
+          tryFirstSourceId,
+          ...filteredSourceOrder.filter((id) => id !== tryFirstSourceId),
+        ];
+      }
 
       // Collect all failed embed IDs across all sources for current media
       const allFailedEmbedIds = Object.values(failedEmbeds).flat();
@@ -471,8 +487,12 @@ export function useScrape() {
   );
 
   const resumeScraping = useCallback(
-    async (media: ScrapeMedia, startFromSourceId: string) => {
-      return startScraping(media, startFromSourceId);
+    async (
+      media: ScrapeMedia,
+      startFromSourceId: string,
+      tryFirstSourceId?: string | null,
+    ) => {
+      return startScraping(media, startFromSourceId, tryFirstSourceId);
     },
     [startScraping],
   );

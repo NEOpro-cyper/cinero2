@@ -32,6 +32,10 @@ export interface ScrapingProps {
     sourceOrder: ScrapingItems[],
   ) => void;
   startFromSourceId?: string;
+  /** Server to try FIRST (before everything else) during this scrape
+   *  round — used by the previous-working-server fallback when the
+   *  player returns to a server that was working before. */
+  tryFirstSourceId?: string | null;
 }
 
 export function ScrapingPart(props: ScrapingProps) {
@@ -73,8 +77,12 @@ export function ScrapingPart(props: ScrapingProps) {
 
     (async () => {
       const output = props.startFromSourceId
-        ? await resumeScraping(props.media, props.startFromSourceId)
-        : await startScraping(props.media);
+        ? await resumeScraping(
+            props.media,
+            props.startFromSourceId,
+            props.tryFirstSourceId,
+          )
+        : await startScraping(props.media, undefined, props.tryFirstSourceId);
       if (!isMounted()) return;
       props.onResult?.(
         resultRef.current.sources,
