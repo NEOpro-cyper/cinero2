@@ -48,19 +48,19 @@ const ROUTES = [
   { prefix: "anivexa",     upstream: process.env.ANIVEXA_UPSTREAM     || "https://anivexa-api-sigma.vercel.app" },
   { prefix: "zoko",        upstream: process.env.ZOKO_UPSTREAM        || "https://zoko.speedoflight.buzz" },
   { prefix: "nest",        upstream: process.env.NEST_UPSTREAM        || "https://upwvbg9nirhd0qn76tid7ces.45.43.92.254.sslip.io" },
-  // VidRock — Luna (?server=luna) + Orion (?server=orion)
+  // VidRock — Luna (?server=luna) + Vega (?server=orion)
   { prefix: "vidrock",     upstream: process.env.VIDROCK_UPSTREAM     || "https://vidrock.speedoflight.buzz" },
-  // Lordflix — Light (?server=Lisbon) + Space (?server=Scout)
+  // Lordflix — Lumen (?server=Lisbon) + Astra (?server=Scout)
   { prefix: "lordflix",    upstream: process.env.LORDFLIX_UPSTREAM    || "https://lordflix.speedoflight.buzz" },
-  // Vidfast — Meriton (?server=1) + Slaze (?server=2)
+  // Vidfast — Nebula (?server=1) + Quasar (?server=2)
   { prefix: "vidfast",     upstream: process.env.VIDFAST_UPSTREAM     || "https://vidfast.45.43.92.254.sslip.io" },
-  // Xpass — Aruko server-list API
+  // Xpass — Pulsar server-list API
   { prefix: "xpass",       upstream: process.env.XPASS_UPSTREAM       || "https://xpass-api.45.43.92.254.sslip.io" },
   // Xpass playlist host (Cloudflare-protected — see UA note above)
   { prefix: "xpassplay",   upstream: process.env.XPASSPLAY_UPSTREAM   || "https://play.xpass.top" },
-  // Miami — lordflix-family API on its own host (?server=miami)
+  // Solara — Miami lordflix-family API on its own host (?server=miami)
   { prefix: "miami",       upstream: process.env.MIAMI_UPSTREAM       || "https://movy-bz.45.43.92.254.sslip.io" },
-  // Kyro — Vidora API
+  // Zenith — Vidora API
   { prefix: "vidora",      upstream: process.env.VIDORA_UPSTREAM      || "https://movies-api.45.43.92.254.sslip.io" },
   // CinetaroCDN — embek endpoint
   { prefix: "cinetarocdn", upstream: process.env.CINETAROCDN_UPSTREAM || "https://atlantic.speedoflight.buzz" },

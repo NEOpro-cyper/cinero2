@@ -444,7 +444,7 @@ function adaptAetherMeridian(json: any): NormalizedStream | undefined {
 }
 
 /**
- * `vidnest` — Vidnest API (Nest)
+ * `vidnest` — Vidnest API (Comet)
  * Probed response was an error: {"error":"Upstream error","status":402,...}
  * Best-guess success shape (based on similar APIs):
  *   {
@@ -974,7 +974,7 @@ function adaptZoko(json: any): NormalizedStream | undefined {
         }))
     : [];
 
-  return hlsFromUrl(url, { captions, label: "Zoko" });
+  return hlsFromUrl(url, { captions, label: "Kitsune" });
 }
 
 /**
@@ -1055,7 +1055,7 @@ function adaptAnivexa(json: any): NormalizedStream | undefined {
         : toCaptions(json.subtitles);
     return hlsFromUrl(pick.url, {
       captions,
-      label: `Anivexa · ${pick.server ?? json.audio ?? "HD"}`,
+      label: `Sakura · ${pick.server ?? json.audio ?? "HD"}`,
     });
   }
 
@@ -1068,12 +1068,12 @@ function adaptAnivexa(json: any): NormalizedStream | undefined {
 /* ------------------------------------------------------------------ */
 
 /**
- * `vidfast` — Vidfast stream API (Meriton ?server=1, Slaze ?server=2)
+ * `vidfast` — Vidfast stream API (Nebula ?server=1, Quasar ?server=2)
  * Service root advertises:
  *   GET /api/movie/{tmdbOrImdbId}[?server=1|name][&worker=1]
  *   GET /api/tv/{tmdbOrImdbId}/{season}/{episode}[?server=1|name][&worker=1]
  *
- * CONFIRMED success shape (live sample, identical for Meriton & Slaze):
+ * CONFIRMED success shape (live sample, identical for Nebula & Quasar):
  *   { success: true, type: "movie", id, title, poster, backdrop,
  *     selectedBy, server: { index, name: "vBlaze", ... },
  *     originalUrl: "https://moon.zenoak.top/.../master.m3u8",      (raw host)
@@ -1144,7 +1144,7 @@ function adaptVidfast(json: any): NormalizedStream | undefined {
 }
 
 /**
- * `xpass` — Xpass API (Aruko). TWO-STEP flow, resolved in fetcher.ts:
+ * `xpass` — Xpass API (Pulsar). TWO-STEP flow, resolved in fetcher.ts:
  *
  *   Step 1 (this response): GET /api/movie/{id}?server=1&worker=1
  *     { mode: "single", tmdb_id, positionKey, selectedServer: "TIK 1",
@@ -1185,7 +1185,7 @@ function adaptXpass(json: any): NormalizedStream | undefined {
 }
 
 /**
- * `vidora` — Vidora API (Kyro)
+ * `vidora` — Vidora API (Zenith)
  * Success shape (probed):
  *   { result: true, type: "movie"|"tv", title, tmdb_id, imdb_id, year,
  *     view_type, view_id,

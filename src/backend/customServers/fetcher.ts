@@ -16,8 +16,8 @@ import {
  *
  * For anime media (media.malId is set), the {id} placeholder is
  * replaced with the MyAnimeList anime ID instead of the TMDB id. This
- * is what the Zoko anime server expects
- * (/api/mal/{category}/{malId}/{episode}?worker=1).
+ * is what the Kitsune anime server expects (Zoko upstream:
+ * /api/mal/{category}/{malId}/{episode}?worker=1).
  *
  * {category} is the Sub/Dub placeholder ("sub" | "dub").
  * It always comes from media.miroruCategory (preferences,
@@ -40,7 +40,7 @@ export function buildServerUrl(
     : encodeURIComponent(media.tmdbId);
 
   // Sub/Dub category (only used when the pattern contains the
-  // {category} placeholder — e.g. the Zoko anime server).
+  // {category} placeholder — e.g. the anime servers).
   const categoryValue = media.miroruCategory ?? "sub";
 
   return pattern
@@ -56,8 +56,8 @@ export function buildServerUrl(
  * Each server declares which media types it supports via `mediaTypes`
  * (defaults to ["movie", "show"] for TMDB-based servers). Anime media
  * (URL pattern: /media/mal-<id>-<slug>) only matches servers that
- * declare "anime" — so Hable/Nest/Luna/Orion/Light/Space/Kuro/Tiki/
- * Popins/Meridian/CinetaroCDN are skipped for anime, and Zoko is
+ * declare "anime" — so Hable/Comet/Luna/Vega/Lumen/Astra/Kuro/Tiki/
+ * Popins/Meridian/CinetaroCDN are skipped for anime, and Kitsune is
  * skipped for movies/shows.
  */
 export function isServerApplicableForMedia(
@@ -141,7 +141,7 @@ async function fetchWithTimeout(
 }
 
 /* ------------------------------------------------------------------ */
-/*  Xpass (Aruko) two-step resolution                                  */
+/*  Xpass (Pulsar) two-step resolution                                 */
 /* ------------------------------------------------------------------ */
 
 /**

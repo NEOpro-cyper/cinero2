@@ -20,7 +20,7 @@
  *                 Default: /tv/{id}/{season}/{episode}  or  /movie/{id}
  *    mediaTypes — (optional) Which media types this server handles.
  *                 Defaults to ["movie", "show"]. Anime-only servers
- *                 (Zoko) declare ["anime"].
+ *                 (Sakura / Kitsune) declare ["anime"].
  *
  *  EXAMPLE:
  *    {
@@ -31,7 +31,7 @@
  *      timeout: 10000,
  *    }
  *
- *  ANIME (Zoko):
+ *  ANIME (Kitsune — Zoko upstream):
  *    Upstream URL pattern: .../api/mal/{sub|dub}/{malId}/{episode}?worker=1
  *    (proxied as /api/ext/zoko/api/mal/... so the real host stays hidden)
  *    {id}       → the MyAnimeList ID (from the Jikan metadata layer)
@@ -78,7 +78,7 @@ export interface ServerConfig {
   quality?: string;
   /**
    * Which media types this server can handle. Defaults to ["movie", "show"]
-   * (i.e. TMDB-based servers). Anime-only servers (Zoko) declare ["anime"].
+   * (i.e. TMDB-based servers). Anime-only servers (Sakura / Kitsune) declare ["anime"].
    *
    * When the player loads an anime (URL pattern: /media/mal-<id>-<slug>),
    * only servers with "anime" in their mediaTypes list are tried — movie/show
@@ -88,7 +88,7 @@ export interface ServerConfig {
 }
 
 const SERVERS: ServerConfig[] = [
-  // ── Anivexa (anime-only) — MAL-based streaming API (Anikoto sources) ──
+  // ── Sakura (anime-only) — Anivexa upstream, MAL-based (Anikoto sources) ──
   // Anime only — uses MyAnimeList ids, would 404 for TMDB ids.
   // Skipped for movies/shows (see mediaTypes).
   //
@@ -110,7 +110,7 @@ const SERVERS: ServerConfig[] = [
   //     srclang, default}], priority, isActive, intro, outro }
   //   → handled by the "anivexa" adapter.
   {
-    name: "Anivexa",
+    name: "Sakura",
     base: "/api/ext/anivexa",
     path: "/api/ext/anivexa/watch/anikoto/{id}/{category}/anikoto-1?worker=1",
     tvPath:
@@ -120,7 +120,7 @@ const SERVERS: ServerConfig[] = [
     mediaTypes: ["anime"],
   },
 
-  // ── Zoko (anime-only) — Jikan/MAL-based streaming API ──
+  // ── Kitsune (anime-only) — Zoko upstream, Jikan/MAL-based ──
   // Anime only — uses MyAnimeList ids, would 404 for TMDB ids.
   // Skipped for movies/shows (see mediaTypes).
   //
@@ -135,7 +135,7 @@ const SERVERS: ServerConfig[] = [
   // Response shape: { ok, stream_url, subtitles: [{lang, label, src}], skip }
   // → handled by the "zoko" adapter.
   {
-    name: "Zoko",
+    name: "Kitsune",
     base: "/api/ext/zoko",
     path: "/api/ext/zoko/api/mal/{category}/{id}/1?worker=1",
     tvPath: "/api/ext/zoko/api/mal/{category}/{id}/{episode}?worker=1",
@@ -156,11 +156,11 @@ const SERVERS: ServerConfig[] = [
 //    mediaTypes: ["movie", "show"],
 //  },
 
-  // ── Meriton (Vidfast, server=1) ──
+  // ── Nebula (Vidfast upstream, server=1) ──
   // Confirmed live shape: { success: true, url: "https://<cors-worker>/https://.../master.m3u8",
   //   originalUrl, server: { name: "vBlaze" }, ... } → "vidfast" adapter.
   {
-    name: "Meriton",
+    name: "Nebula",
     base: "/api/ext/vidfast",
     path: "/api/ext/vidfast/api/movie/{id}?server=1&worker=1",
     tvPath: "/api/ext/vidfast/api/tv/{id}/{season}/{episode}?server=1&worker=1",
@@ -169,10 +169,10 @@ const SERVERS: ServerConfig[] = [
     mediaTypes: ["movie", "show"],
   },
 
-  // ── Slaze (Vidfast, server=2) ──
-  // Same API + same response shape as Meriton, different backend server.
+  // ── Quasar (Vidfast upstream, server=2) ──
+  // Same API + same response shape as Nebula, different backend server.
   {
-    name: "Slaze",
+    name: "Quasar",
     base: "/api/ext/vidfast",
     path: "/api/ext/vidfast/api/movie/{id}?server=2&worker=1",
     tvPath: "/api/ext/vidfast/api/tv/{id}/{season}/{episode}?server=2&worker=1",
@@ -181,13 +181,13 @@ const SERVERS: ServerConfig[] = [
     mediaTypes: ["movie", "show"],
   },
 
-  // ── Aruko (Xpass) ──
+  // ── Pulsar (Xpass upstream) ──
   // TWO-STEP API: step 1 returns { servers: [{ name, url: playlist.json }] },
   // step 2 fetches the playlist.json (play.xpass.top, CF-protected —
   // resolved server-side via /api/ext/xpassplay/*) which contains the
   // actual HLS manifest. Handled by the "xpass" adapter + fetcher hook.
   {
-    name: "Aruko",
+    name: "Pulsar",
     base: "/api/ext/xpass",
     path: "/api/ext/xpass/api/movie/{id}?server=1&worker=1",
     tvPath: "/api/ext/xpass/api/tv/{id}/{season}/{episode}?server=1&worker=1",
@@ -196,9 +196,9 @@ const SERVERS: ServerConfig[] = [
     mediaTypes: ["movie", "show"],
   },
 
-  // ── Nest (Vidnest) ──
+  // ── Comet (Vidnest upstream) ──
   {
-    name: "Nest",
+    name: "Comet",
     base: "/api/ext/nest",
     path: "/api/ext/nest/api/movie/{id}?worker=1",
     tvPath: "/api/ext/nest/api/tv/{id}/{season}/{episode}?worker=1",
@@ -220,9 +220,9 @@ const SERVERS: ServerConfig[] = [
 //    mediaTypes: ["movie", "show"],
  // },
 
-  // ── Orion (VidRock, server=orion) ──
+  // ── Vega (VidRock upstream, server=orion) ──
   {
-    name: "Orion",
+    name: "Vega",
     base: "/api/ext/vidrock",
     path: "/api/ext/vidrock/api/movie/{id}?server=orion&worker=1",
     tvPath: "/api/ext/vidrock/api/tv/{id}/{season}/{episode}?server=orion&worker=1",
@@ -232,9 +232,9 @@ const SERVERS: ServerConfig[] = [
     mediaTypes: ["movie", "show"],
   },
 
-  // ── Space (Lordflix, server=Scout & worker=1) ──
+  // ── Astra (Lordflix upstream, server=Scout & worker=1) ──
   {
-    name: "Space",
+    name: "Astra",
     base: "/api/ext/lordflix",
     path: "/api/ext/lordflix/api/movie/{id}?server=Scout&worker=1",
     tvPath: "/api/ext/lordflix/api/tv/{id}/{season}/{episode}?server=Scout&worker=1",
@@ -243,12 +243,12 @@ const SERVERS: ServerConfig[] = [
     mediaTypes: ["movie", "show"],
   },
 
-  // ── Miami (Lordflix-family on movy-bz host, server=miami) ──
+  // ── Solara (Lordflix-family upstream on movy-bz host, server=miami) ──
   // Confirmed live shape: { sources: [{quality: "1080p", url: ...m3u8}, ...],
   //   subtitles: [], playlist: "...master.m3u8", server: "miami" }
   // → "lordflix" adapter (playlist preferred, sources[] as fallback).
   {
-    name: "Miami",
+    name: "Solara",
     base: "/api/ext/miami",
     path: "/api/ext/miami/api/movie/{id}?server=miami&worker=1",
     tvPath: "/api/ext/miami/api/tv/{id}/{season}/{episode}?server=miami&worker=1",
@@ -257,12 +257,12 @@ const SERVERS: ServerConfig[] = [
     mediaTypes: ["movie", "show"],
   },
 
-  // ── Kyro (Vidora) ──
+  // ── Zenith (Vidora upstream) ──
   // Confirmed live shape: { result: true, sources: [{ url: "https://<cors-worker>/.../master.m3u8",
   //   tracks: [] }] }; failure: { result: false, message: "Movie not yet encoded" }
   // → "vidora" adapter (result:false → undefined → auto-failover).
   {
-    name: "Kyro",
+    name: "Zenith",
     base: "/api/ext/vidora",
     path: "/api/ext/vidora/api/movie/{id}?worker=1",
     tvPath: "/api/ext/vidora/api/tv/{id}/{season}/{episode}?worker=1",
@@ -271,9 +271,9 @@ const SERVERS: ServerConfig[] = [
     mediaTypes: ["movie", "show"],
   },
 
-   // ── Light (Lordflix, default) ──
+   // ── Lumen (Lordflix upstream, server=Lisbon) ──
   {
-    name: "Light",
+    name: "Lumen",
     base: "/api/ext/lordflix",
     path: "/api/ext/lordflix/api/movie/{id}?server=Lisbon&worker=1",
     tvPath: "/api/ext/lordflix/api/tv/{id}/{season}/{episode}?server=Lisbon&worker=1",

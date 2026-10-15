@@ -199,15 +199,20 @@ Same as the Docker section — put Caddy / nginx in front, proxying to `127.0.0.
 
 This fork ships with a custom API servers module at `src/backend/customServers/`. Servers are defined in `src/backend/customServers/config.ts` and currently include:
 
-| Name         | responseType       | Upstream API                                  |
-|--------------|--------------------|-----------------------------------------------|
-| Armor        | `opstream`         | opstream-api.vercel.app                       |
-| Kuro         | `bingr`            | bingr-api-beige.vercel.app                    |
-| Tiki         | `aether_tiki`      | aether-api.45.43.92.254.sslip.io (server=4)   |
-| Nest         | `vidnest`          | upwvbg9nirhd0qn76tid7ces.45.43.92.254.sslip.io|
-| Meridian     | `aether_meridian`  | aether-api.45.43.92.254.sslip.io (server=2)   |
-| Atlas        | `sources`          | vidrock.45.43.92.254.sslip.io                 |
-| CinetaroCDN  | `qualities`        | cdn.cinetaro.tv                               |
+| Name         | responseType       | Upstream API                                   |
+|--------------|--------------------|------------------------------------------------|
+| Sakura       | `anivexa`          | anivexa-api-sigma.vercel.app (anime, MAL ids)  |
+| Kitsune      | `zoko`             | zoko.speedoflight.buzz (anime, MAL ids)        |
+| Nebula       | `vidfast`          | vidfast.45.43.92.254.sslip.io (server=1)       |
+| Quasar       | `vidfast`          | vidfast.45.43.92.254.sslip.io (server=2)       |
+| Pulsar       | `xpass`            | xpass-api.45.43.92.254.sslip.io (server=1)     |
+| Comet        | `vidnest`          | upwvbg9nirhd0qn76tid7ces.45.43.92.254.sslip.io |
+| Vega         | `sources`          | vidrock.speedoflight.buzz (server=orion)       |
+| Astra        | `lordflix`         | lordflix.speedoflight.buzz (server=Scout)      |
+| Solara       | `lordflix`         | movy-bz.45.43.92.254.sslip.io (server=miami)   |
+| Zenith       | `vidora`           | movies-api.45.43.92.254.sslip.io               |
+| Lumen        | `lordflix`         | lordflix.speedoflight.buzz (server=Lisbon)     |
+| CinetaroCDN  | `qualities`        | atlantic.speedoflight.buzz                     |
 
 ### How it works
 
@@ -267,7 +272,7 @@ After deployment, verify each piece:
 - [ ] Site loads at your domain
 - [ ] Browsing/searching movies works (needs `VITE_TMDB_READ_API_KEY`)
 - [ ] Clicking a movie opens the player
-- [ ] The source picker shows your custom servers (Armor, Kuro, etc.) at the bottom of the list
+- [ ] The source picker shows your custom servers (Nebula, Comet, etc.) at the bottom of the list
 - [ ] Clicking a custom server source starts playback (verify in the browser DevTools Network tab — you should see requests to the upstream API, then to the HLS/MP4 stream)
 - [ ] If playback fails with a CORS error in the console, set `VITE_CORS_PROXY_URL` in `config.js` and reload
 
@@ -283,13 +288,13 @@ Most upstream streaming APIs return HLS playlists from CDNs that don't send `Acc
 
 Some of the upstream APIs (especially Vidnest and CinetaroCDN) are geo-locked, rate-limited, or occasionally down. The player will mark that source as failed and automatically fall through to the next one. Check the browser console for the specific error message — the adapter logs the upstream URL and HTTP status.
 
-### Atlas (VidRock) only has the "Orion" server, not "Atlas"
+### VidRock (Vega) only exposes the "orion" upstream server
 
-The included config uses `server=atlas` per the original spec, but VidRock currently only exposes `orion`. The adapter falls back to the default (no server filter) on 404, so playback still works — you'll just always get the "Orion" stream regardless of the `server=atlas` query param. If you want to use the working server explicitly, edit `src/backend/customServers/config.ts` and replace `?server=atlas` with `?server=orion` (or remove it entirely).
+VidRock currently only exposes its `orion` backend, and the included config already targets `?server=orion`, so playback works out of the box. If VidRock adds more servers later, edit `src/backend/customServers/config.ts` and change the `server=` query param on the Vega entry.
 
 ### CinetaroCDN doesn't resolve
 
-`cdn.cinetaro.tv` may not be reachable from all networks. The adapter handles DNS failures gracefully — that source will simply be marked as failed and the player moves on. If you have a different working Cinetaro endpoint, replace it in `config.ts`.
+`cdn.cinetaro.tv` / `atlantic.speedoflight.buzz` may not be reachable from all networks. The adapter handles DNS failures gracefully — that source will simply be marked as failed and the player moves on. If you have a different working Cinetaro endpoint, replace it in `config.ts`.
 
 ---
 

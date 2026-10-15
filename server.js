@@ -88,31 +88,31 @@ function safeJoin(base, target) {
 //
 // `timeout` (ms) is optional — defaults to 20000.
 const STREAMING_PROXY_ROUTES = [
-  // Anivexa — anime streaming via MAL id:
+  // Sakura (Anivexa upstream) — anime streaming via MAL id:
   //   /watch/anikoto/{malId}/{sub|dub}/anikoto-{episode}?worker=1
   // (streaming only — anime METADATA always comes from AniList directly)
   { prefix: "/api/ext/anivexa/",    upstream: process.env.ANIVEXA_UPSTREAM    || "https://anivexa-api-sigma.vercel.app" },
-  // Zoko — anime streaming via MAL id: /api/mal/{sub|dub}/{id}/{episode}
+  // Kitsune (Zoko upstream) — anime: /api/mal/{sub|dub}/{id}/{episode}
   // (streaming only — anime METADATA always comes from AniList directly)
   { prefix: "/api/ext/zoko/",        upstream: process.env.ZOKO_UPSTREAM        || "https://zoko.speedoflight.buzz" },
 //  { prefix: "/api/ext/hable/",       upstream: process.env.HABLE_UPSTREAM       || "https://w7ooimb6vul9vcus77l7yf68.45.43.92.254.sslip.io" },
   { prefix: "/api/ext/nest/",        upstream: process.env.NEST_UPSTREAM        || "https://upwvbg9nirhd0qn76tid7ces.45.43.92.254.sslip.io" },
-  // VidRock — Luna (?server=luna) + Orion (?server=orion)
+  // VidRock — Luna (?server=luna) + Vega (?server=orion)
   { prefix: "/api/ext/vidrock/",     upstream: process.env.VIDROCK_UPSTREAM     || "https://vidrock.speedoflight.buzz" },
-  // Lordflix — Light (?server=Lisbon) + Space (?server=Scout)
+  // Lordflix — Lumen (?server=Lisbon) + Astra (?server=Scout)
   { prefix: "/api/ext/lordflix/",    upstream: process.env.LORDFLIX_UPSTREAM    || "https://lordflix.speedoflight.buzz" },
-  // Vidfast — Meriton (?server=1) + Slaze (?server=2)
+  // Vidfast — Nebula (?server=1) + Quasar (?server=2)
   { prefix: "/api/ext/vidfast/",     upstream: process.env.VIDFAST_UPSTREAM     || "https://vidfast.45.43.92.254.sslip.io" },
-  // Xpass — Aruko (server-list API: /api/movie/{id}?server=1&worker=1)
+  // Xpass — Pulsar (server-list API: /api/movie/{id}?server=1&worker=1)
   { prefix: "/api/ext/xpass/",       upstream: process.env.XPASS_UPSTREAM       || "https://xpass-api.45.43.92.254.sslip.io" },
   // Xpass playlist host — the /api/ext/xpass/ API returns playlist.json
   // URLs on play.xpass.top (Cloudflare-protected). The generic proxy
   // below forwards the browser's real User-Agent, which is enough to
   // pass the CF check (verified: UA-only → HTTP 200, curl UA → challenge).
   { prefix: "/api/ext/xpassplay/",   upstream: process.env.XPASSPLAY_UPSTREAM   || "https://play.xpass.top" },
-  // Miami — lordflix-family API on its own host (?server=miami)
+  // Solara — Miami lordflix-family API on its own host (?server=miami)
   { prefix: "/api/ext/miami/",       upstream: process.env.MIAMI_UPSTREAM       || "https://movy-bz.45.43.92.254.sslip.io" },
-  // Kyro — Vidora API (/api/movie/{id}?worker=1)
+  // Zenith — Vidora API (/api/movie/{id}?worker=1)
   { prefix: "/api/ext/vidora/",      upstream: process.env.VIDORA_UPSTREAM      || "https://movies-api.45.43.92.254.sslip.io" },
 //  { prefix: "/api/ext/bingr/",       upstream: process.env.BINGR_UPSTREAM       || "https://r420jyawtqacmm8bfuychtuv.45.43.92.254.sslip.io" },
   // Aether — Tiki (?server=4) + Meridian (?server=2)
