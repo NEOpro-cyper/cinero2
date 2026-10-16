@@ -7,6 +7,7 @@ import {
   setDomainRule,
 } from "@/backend/extension/messaging";
 import {
+  DisplayError,
   DisplayInterface,
   DisplayInterfaceEvents,
 } from "@/components/player/display/displayInterface";
@@ -51,6 +52,15 @@ const qualityThresholds = [
   { minHeight: 420, quality: "480" as SourceQuality },
   { minHeight: 0, quality: "360" as SourceQuality },
 ];
+
+// ── Slow-server patience (see the watchdogs inside
+// makeVideoElementDisplayInterface) ──────────────────────────────
+// How long the player waits for a slow server before giving up and
+// letting the app switch: the manifest must arrive within 75s, and
+// the first playable fragment must buffer within 150s of starting.
+// A server that produces data within that window is never abandoned.
+const MANIFEST_LOAD_GRACE_MS = 75 * 1000;
+const FIRST_PLAYBACK_GRACE_MS = 150 * 1000;
 
 function hlsLevelToQuality(level?: Level): SourceQuality | null {
   if (!level?.height) return null;
@@ -98,6 +108,24 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
   let lastValidTime = 0; // Store the last valid time to prevent reset during source switches
   let shouldAutoplayAfterLoad = false; // Flag to track if we should autoplay after loading completes
   let qualityChangeTimeout: NodeJS.Timeout | null = null; // Timeout for debouncing rapid quality changes
+
+  // Startup watchdogs for the currently loading HLS source (see
+  // MANIFEST_LOAD_GRACE_MS / FIRST_PLAYBACK_GRACE_MS above). Cleared
+  // when the manifest loads, when the first fragment buffers, and on
+  // every source unload.
+  let manifestWatchdog: NodeJS.Timeout | null = null;
+  let startupWatchdog: NodeJS.Timeout | null = null;
+
+  function clearStartupWatchdogs() {
+    if (manifestWatchdog) {
+      clearTimeout(manifestWatchdog);
+      manifestWatchdog = null;
+    }
+    if (startupWatchdog) {
+      clearTimeout(startupWatchdog);
+      startupWatchdog = null;
+    }
+  }
 
   const languagePromises = new Map<
     string,
@@ -208,6 +236,46 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
               },
             },
           },
+          // Manifest + level playlists otherwise use hls.js defaults
+          // (20s per attempt, 2 timeout retries) — far too impatient for
+          // the worker-proxied CDNs this app plays, which can sit silent
+          // for tens of seconds on a cold start. Give slow servers a
+          // fair chance: up to 30s per attempt, first byte within 20s
+          // (a stuck request restarts sooner), several timeout retries.
+          manifestLoadPolicy: {
+            default: {
+              maxLoadTimeMs: 30 * 1000,
+              maxTimeToFirstByteMs: 20 * 1000,
+              errorRetry: {
+                maxNumRetry: 3,
+                retryDelayMs: 1000,
+                maxRetryDelayMs: 4000,
+              },
+              timeoutRetry: {
+                maxNumRetry: 4,
+                retryDelayMs: 1000,
+                maxRetryDelayMs: 4000,
+              },
+            },
+          },
+          // Covers level/media playlists (the master manifest has its
+          // own policy above) — e.g. the index-v1-a1.m3u8 playlists.
+          playlistLoadPolicy: {
+            default: {
+              maxLoadTimeMs: 30 * 1000,
+              maxTimeToFirstByteMs: 20 * 1000,
+              errorRetry: {
+                maxNumRetry: 3,
+                retryDelayMs: 1000,
+                maxRetryDelayMs: 4000,
+              },
+              timeoutRetry: {
+                maxNumRetry: 4,
+                retryDelayMs: 1000,
+                maxRetryDelayMs: 4000,
+              },
+            },
+          },
           renderTextTracksNatively: false,
         });
         const exceptions = [
@@ -227,8 +295,68 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
         let manifestLoadedOnce = false;
         let networkRecoverAttempts = 0;
         let mediaRecoverAttempts = 0;
+        let bufferedOnce = false;
+        let startupFailed = false;
         const MAX_NETWORK_RECOVERY_ATTEMPTS = 2;
         const MAX_MEDIA_RECOVERY_ATTEMPTS = 2;
+
+        // Emit a playback error at most ONCE per source. Without this
+        // guard a single source could emit twice (e.g. hls fatal error
+        // followed by a watchdog firing while the app is still
+        // switching) and the second error would blame the NEXT server.
+        const failSource = (err: DisplayError) => {
+          if (startupFailed) return;
+          startupFailed = true;
+          clearStartupWatchdogs();
+          emit("error", err);
+        };
+
+        // ── Slow-server watchdogs ────────────────────────────────
+        // Switching servers just because one is slow to load is wrong —
+        // these worker-proxied CDNs often stay silent for a long time.
+        // hls.js keeps retrying internally; the watchdogs only give up
+        // when the server has had a fair chance and produced NOTHING:
+        //   • manifest still not loaded after MANIFEST_LOAD_GRACE_MS
+        //   • not a single fragment buffered after FIRST_PLAYBACK_GRACE_MS
+        clearStartupWatchdogs();
+        manifestWatchdog = setTimeout(() => {
+          manifestWatchdog = null;
+          if (!manifestLoadedOnce) {
+            console.warn(
+              "HLS manifest never loaded — giving up on this server",
+            );
+            failSource({
+              message:
+                "Server took too long to load (manifest never responded)",
+              errorName: "manifestLoadTimeOut",
+              type: "hls",
+              hls: {
+                details: "manifestLoadTimeOut",
+                fatal: true,
+                type: Hls.ErrorTypes.NETWORK_ERROR,
+              },
+            });
+          }
+        }, MANIFEST_LOAD_GRACE_MS);
+        startupWatchdog = setTimeout(() => {
+          startupWatchdog = null;
+          if (!bufferedOnce) {
+            console.warn(
+              "HLS produced no playable data — giving up on this server",
+            );
+            failSource({
+              message:
+                "Server took too long to start playing (no video data buffered)",
+              errorName: "startupTimeOut",
+              type: "hls",
+              hls: {
+                details: "fragLoadTimeOut",
+                fatal: true,
+                type: Hls.ErrorTypes.NETWORK_ERROR,
+              },
+            });
+          }
+        }, FIRST_PLAYBACK_GRACE_MS);
 
         hls?.on(Hls.Events.ERROR, (event, data) => {
           console.error("HLS error", data);
@@ -265,17 +393,20 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
           if (!data.fatal) {
             // Non-fatal errors: hls.js retries these internally via
             // its manifest/level/fragment load policies (and ABR can
-            // simply move to another level). Emitting an error here
-            // used to switch servers while the stream was still
-            // playable — so we only fast-fail when the manifest has
-            // NEVER loaded for this source (URL is genuinely dead).
+            // simply move to another level). Only fast-fail when the
+            // manifest fetch actually FAILED (HTTP error / unparseable
+            // body) and never loaded — that URL is genuinely dead.
+            // manifestLoadTimeOut is deliberately NOT in this list: a
+            // timeout means the server is slow, not dead — hls.js keeps
+            // retrying it and the startup watchdogs decide when patience
+            // runs out. Fast-failing timeouts used to abandon
+            // slow-but-playable servers after a single 20s attempt.
             const isManifestError = [
               "manifestLoadError",
               "manifestParsingError",
-              "manifestLoadTimeOut",
             ].includes(data.details);
             if (isManifestError && !manifestLoadedOnce) {
-              emit("error", {
+              failSource({
                 message: `Failed to load HLS manifest: ${data.details}`,
                 stackTrace: data.error?.stack || "",
                 errorName: data.error?.name || data.details,
@@ -318,7 +449,7 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
 
           // Recovery exhausted (or unknown fatal type) — this source
           // is truly broken, let the app try the next server.
-          emit("error", {
+          failSource({
             message:
               data.error?.message || `HLS fatal: ${data.details}`,
             stackTrace: data.error?.stack,
@@ -328,14 +459,22 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
           });
         });
         // Successful buffering = playback is progressing again.
-        // Reset the recovery budgets so future hiccups get their own.
+        // Prove the server works (stops the startup watchdogs) and
+        // reset the recovery budgets so future hiccups get their own.
         hls?.on(Hls.Events.FRAG_BUFFERED, () => {
+          bufferedOnce = true;
+          clearStartupWatchdogs();
           networkRecoverAttempts = 0;
           mediaRecoverAttempts = 0;
         });
         hls.on(Hls.Events.MANIFEST_LOADED, () => {
           if (!hls) return;
           manifestLoadedOnce = true;
+          // The server responded — stop the manifest watchdog.
+          if (manifestWatchdog) {
+            clearTimeout(manifestWatchdog);
+            manifestWatchdog = null;
+          }
           reportLevels();
           setupQualityForHls();
           reportAudioTracks();
@@ -628,6 +767,9 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
       qualityChangeTimeout = null;
     }
 
+    // Stop the slow-server watchdogs of the previous source
+    clearStartupWatchdogs();
+
     if (videoElement) {
       videoElement.removeAttribute("src");
       videoElement.load();
@@ -718,7 +860,12 @@ export function makeVideoElementDisplayInterface(): DisplayInterface {
       );
     },
     load(ops) {
-      if (!ops.source) unloadSource();
+      // Always tear down the previous source before loading a new one.
+      // Without this the old Hls instance is orphaned while still
+      // retrying in the background, and its late errors get blamed on
+      // the NEW source — abandoning healthy servers (phantom failures,
+      // e.g. "switched even though the stream was playable").
+      unloadSource();
       automaticQuality = ops.automaticQuality;
       preferenceQuality = ops.preferredQuality;
       source = ops.source;
