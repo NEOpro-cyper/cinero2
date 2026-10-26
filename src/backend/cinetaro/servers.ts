@@ -130,7 +130,7 @@ const SERVERS: ServerConfig[] = [
 
   // ── NEW: Vidfast vRapid (server=1) ──
   {
-    name: "Vidfast",
+    name: "Interstellar",
     base: "https://vidfast.45.43.92.254.sslip.io",
     path: "https://vidfast.45.43.92.254.sslip.io/api/movie/{id}?server=1&worker=1&data=en",
     tvPath:
@@ -141,7 +141,7 @@ const SERVERS: ServerConfig[] = [
 
   // ── NEW: Vidfast vBlaze (server=2) ──
   {
-    name: "Vidfast 2",
+    name: "Nova",
     base: "https://vidfast.45.43.92.254.sslip.io",
     path: "https://vidfast.45.43.92.254.sslip.io/api/movie/{id}?server=2&worker=1&data=en",
     tvPath:
@@ -162,7 +162,7 @@ const SERVERS: ServerConfig[] = [
 
   // ── NEW: XPass ──
   {
-    name: "XPass",
+    name: "Pulsar",
     base: "https://xpass-api.45.43.92.254.sslip.io",
     path: "https://xpass-api.45.43.92.254.sslip.io/movie/{id}?server=1&worker=1&data=en",
     tvPath:
@@ -173,7 +173,7 @@ const SERVERS: ServerConfig[] = [
 
   // ── NEW: Vidnest ──
   {
-    name: "Vidnest",
+    name: "Andromeda",
     base: "https://upwvbg9nirhd0qn76tid7ces.45.43.92.254.sslip.io",
     path: "https://upwvbg9nirhd0qn76tid7ces.45.43.92.254.sslip.io/api/movie/{id}?data=en",
     tvPath:
@@ -196,7 +196,7 @@ const SERVERS: ServerConfig[] = [
 
   // ── NEW: VidRock Atlas (HLS multi-quality) ──
   {
-    name: "VidRock",
+    name: "Orion",
     base: "https://vidrock.speedoflight.buzz",
     path: "https://vidrock.speedoflight.buzz/api/movie/{id}?server=orion&worker=1&data=en",
     tvPath:
@@ -208,7 +208,7 @@ const SERVERS: ServerConfig[] = [
 
   // ── NEW: Miami (Movy) ──
   {
-    name: "Movy",
+    name: "Cosmo",
     base: "https://movy-bz.45.43.92.254.sslip.io",
     path: "https://movy-bz.45.43.92.254.sslip.io/api/movie/{id}?server=miami&worker=1&data=en",
     tvPath:
@@ -220,7 +220,7 @@ const SERVERS: ServerConfig[] = [
   // ── NEW: Vidora (Movies API) ──
   // { result, type, title, tmdb_id, sources: [{ file_code, url (m3u8), source, tracks: [{ label, file (vtt) }] }] }
   {
-    name: "Vidora",
+    name: "Quasar",
     base: "https://movies-api.45.43.92.254.sslip.io",
     path: "https://movies-api.45.43.92.254.sslip.io/api/movie/{id}?worker=1&data=en",
     tvPath:
@@ -231,7 +231,7 @@ const SERVERS: ServerConfig[] = [
 
   // ── NEW: Lordflix (default) ──
   {
-    name: "Lordflix",
+    name: "Stellar",
     base: "https://lordflix.speedoflight.buzz",
     path: "https://lordflix.speedoflight.buzz/api/movie/{id}?server=Lisbon&worker=1&data=en",
     tvPath:
@@ -242,7 +242,7 @@ const SERVERS: ServerConfig[] = [
 
   // ── NEW: Lordflix (default) ──
   {
-    name: "Lordflix Nebula",
+    name: "Nebula",
     base: "https://lordflix.speedoflight.buzz",
     path: "https://lordflix.speedoflight.buzz/api/movie/{id}?server=nebula&worker=1&data=en",
     tvPath:
@@ -253,7 +253,7 @@ const SERVERS: ServerConfig[] = [
 
   // ── NEW: Lordflix (server=1 & worker=1) ──
   {
-    name: "Lordflix Scout",
+    name: "Apollo",
     base: "https://lordflix.speedoflight.buzz",
     path: "https://lordflix.speedoflight.buzz/api/movie/{id}?server=Scout&worker=1&data=en",
     tvPath:
@@ -264,7 +264,7 @@ const SERVERS: ServerConfig[] = [
 
   // ── NEW: CDN Cinetaro ──
   {
-    name: "Cinetaro CDN",
+    name: "Zenith",
     base: "https://atlantic.speedoflight.buzz",
     path: "https://atlantic.speedoflight.buzz/api/embek?tmdb_id={id}&type=movie",
     tvPath:
