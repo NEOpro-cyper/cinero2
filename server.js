@@ -93,6 +93,14 @@ const STREAMING_PROXY_ROUTES = [
   { prefix: "/api/ext/zoko/",        upstream: process.env.ZOKO_UPSTREAM        || "https://zoko.speedoflight.buzz" },
 //  { prefix: "/api/ext/hable/",       upstream: process.env.HABLE_UPSTREAM       || "https://w7ooimb6vul9vcus77l7yf68.45.43.92.254.sslip.io" },
   { prefix: "/api/ext/nest/",        upstream: process.env.NEST_UPSTREAM        || "https://upwvbg9nirhd0qn76tid7ces.45.43.92.254.sslip.io" },
+  // Vidfast — Interstellar (?server=1) + Nova (?server=2)
+  { prefix: "/api/ext/vidfast/",     upstream: process.env.VIDFAST_UPSTREAM     || "https://vidfast.45.43.92.254.sslip.io" },
+  // XPass — Pulsar (?server=1)
+  { prefix: "/api/ext/xpass/",       upstream: process.env.XPASS_UPSTREAM       || "https://xpass-api.45.43.92.254.sslip.io" },
+  // Movy — Cosmo (?server=miami)
+  { prefix: "/api/ext/movy/",        upstream: process.env.MOVY_UPSTREAM        || "https://movy-bz.45.43.92.254.sslip.io" },
+  // Vidora — Quasar (movies-api)
+  { prefix: "/api/ext/vidora/",      upstream: process.env.VIDORA_UPSTREAM      || "https://movies-api.45.43.92.254.sslip.io" },
   // VidRock — Luna (?server=luna) + Orion (?server=orion)
   { prefix: "/api/ext/vidrock/",     upstream: process.env.VIDROCK_UPSTREAM     || "https://vidrock.speedoflight.buzz" },
   // Lordflix — Light (?server=Lisbon) + Space (?server=Scout)

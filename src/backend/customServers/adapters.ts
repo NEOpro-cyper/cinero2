@@ -945,6 +945,155 @@ function adaptZoko(json: any): NormalizedStream | undefined {
   return hlsFromUrl(url, { captions, label: "Zoko" });
 }
 
+/**
+ * `vidfast` — Vidfast API (Interstellar ?server=1 / Nova ?server=2).
+ *
+ * Upstream currently returns `{ success:false, error:"enc-dec stage 2 ..." }`
+ * in some regions, so this adapter is intentionally tolerant. Expected
+ * success shapes handled:
+ *   { success: true, url | streamUrl | stream_url | stream | link: "<hls/mp4>" }
+ *   { success: true, sources: [{ url | file, quality, type }] }
+ */
+function adaptVidfast(json: any): NormalizedStream | undefined {
+  if (!json || typeof json !== "object") return undefined;
+  if (json.success === false || json.result === false || json.error)
+    return undefined;
+
+  const url =
+    (looksLikeUrl(json.url) && json.url) ||
+    (looksLikeUrl(json.streamUrl) && json.streamUrl) ||
+    (looksLikeUrl(json.stream_url) && json.stream_url) ||
+    (looksLikeUrl(json.stream) && json.stream) ||
+    (looksLikeUrl(json.link) && json.link) ||
+    undefined;
+  if (url) {
+    const rawCaps = Array.isArray(json.captions)
+      ? json.captions
+      : Array.isArray(json.subtitles)
+        ? json.subtitles
+        : [];
+    const captions = collectRawCaptions(rawCaps);
+    const label = json.server ? `Vidfast · ${json.server}` : "Vidfast";
+    if (isMp4Url(url)) {
+      return fileFromQualities(
+        [{ quality: normalizeQuality(json.quality), url, type: "mp4" }],
+        { captions, label },
+      );
+    }
+    return hlsFromUrl(url, { captions, label });
+  }
+
+  // sources[] shape fallback
+  const list = Array.isArray(json.sources) ? json.sources : [];
+  const raw: RawSource[] = list
+    .filter((s: any) => looksLikeUrl(s?.url ?? s?.file))
+    .map((s: any) => ({
+      url: s.url ?? s.file,
+      quality: s.quality,
+      type: s.type,
+      name: s.name,
+      label: s.label ?? s.name,
+    }));
+  return fromRawSources(raw, collectRawCaptions(json));
+}
+
+/**
+ * `xpass` — XPass API (Pulsar).
+ * Response shape (probed):
+ *   {
+ *     mode: "single", tmdb_id, selectedServer: "TIK 1",
+ *     servers: [{ name, url }],   // playlist.json endpoints
+ *     sources: [{ file, type: "hls", label, server, id }],
+ *     subtitles: "https://sub.1x2.space/api/movie/{id}"
+ *   }
+ * sources[].file is the ready-to-play (already proxied) HLS manifest.
+ */
+function adaptXpass(json: any): NormalizedStream | undefined {
+  if (!json || typeof json !== "object") return undefined;
+  if (json.success === false || json.error) return undefined;
+
+  // 1. sources[] — preferred (file is already playable HLS)
+  const sources: any[] = Array.isArray(json.sources) ? json.sources : [];
+  for (const s of sources) {
+    const url =
+      (looksLikeUrl(s?.file) && s.file) ||
+      (looksLikeUrl(s?.url) && s.url) ||
+      undefined;
+    if (!url) continue;
+    const label = `XPass · ${
+      s.server ?? s.label ?? json.selectedServer ?? "stream"
+    }`;
+    const type = String(s?.type ?? "").toLowerCase();
+    if (type === "file" || isMp4Url(url)) {
+      return fileFromQualities(
+        [{ quality: normalizeQuality(s.quality ?? s.label), url, type: "mp4" }],
+        { label },
+      );
+    }
+    return hlsFromUrl(url, { label });
+  }
+
+  // 2. servers[] fallback — prefer the API's selectedServer
+  const servers: any[] = Array.isArray(json.servers) ? json.servers : [];
+  const chosen =
+    servers.find(
+      (s) => s?.name === json.selectedServer && looksLikeUrl(s?.url),
+    ) || servers.find((s) => looksLikeUrl(s?.url));
+  if (chosen) {
+    return hlsFromUrl(chosen.url, {
+      label: `XPass · ${chosen.name ?? json.selectedServer ?? "server"}`,
+    });
+  }
+  return undefined;
+}
+
+/**
+ * `vidora` — Vidora / movies-api (Quasar).
+ * Response shape (probed):
+ *   {
+ *     result: true, type: "movie", title, tmdb_id, imdb_id, year,
+ *     sources: [{ file_code, url: "<m3u8 via worker>", source: "vidora",
+ *                tracks: [{ label, file (vtt) }] }]
+ *   }
+ * On failure: { result: false, message: "Movie not yet encoded", ... }
+ * The source url has no .m3u8 extension — treat it as HLS by default.
+ */
+function adaptVidora(json: any): NormalizedStream | undefined {
+  if (!json || typeof json !== "object" || json.result === false) return undefined;
+
+  const sources: any[] = Array.isArray(json.sources) ? json.sources : [];
+  for (const s of sources) {
+    const url =
+      (looksLikeUrl(s?.url) && s.url) ||
+      (looksLikeUrl(s?.file) && s.file) ||
+      undefined;
+    if (!url) continue;
+    const captions: NormalizedCaption[] = Array.isArray(s?.tracks)
+      ? s.tracks
+          .map((t: any, i: number): NormalizedCaption | undefined => {
+            const f = t?.file ?? t?.src ?? t?.url;
+            if (!looksLikeUrl(f)) return undefined;
+            return {
+              id: `vidora-cap-${i}`,
+              language: String(t?.lang ?? t?.language ?? t?.label ?? "und"),
+              url: f,
+              display: t?.label ?? t?.language,
+            };
+          })
+          .filter((c: any): c is NormalizedCaption => !!c)
+      : [];
+    const label = `Vidora · ${s.source ?? json.title ?? "stream"}`;
+    if (isMp4Url(url)) {
+      return fileFromQualities(
+        [{ quality: normalizeQuality(s.quality), url, type: "mp4" }],
+        { captions, label },
+      );
+    }
+    return hlsFromUrl(url, { captions, label });
+  }
+  return undefined;
+}
+
 /* ------------------------------------------------------------------ */
 /*  dispatcher                                                         */
 /* ------------------------------------------------------------------ */
@@ -989,6 +1138,12 @@ export function adaptResponse(
       return adaptLordflix(body);
     case "zoko":
       return adaptZoko(body);
+    case "vidfast":
+      return adaptVidfast(body);
+    case "xpass":
+      return adaptXpass(body);
+    case "vidora":
+      return adaptVidora(body);
     default:
       // Unknown responseType — try a series of fallbacks.
       return (
